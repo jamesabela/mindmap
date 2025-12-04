@@ -6,6 +6,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Text to Mind Map</title>
   <style>
+    /* PWA & Font setup */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  </style>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#4a90e2">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js');
+      });
+    }
+  </script>
+  <style>
     * {
       margin: 0;
       padding: 0;
