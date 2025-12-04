@@ -1,4 +1,5 @@
 # mindmap
 A javascript Mind map tool
 
-Here are the pages: https://jamesabela.github.io/mindmap/
+The tool is here: https://jamesabela.github.io/mindmap/mindmapplain.html
+Its a progressive Web app
