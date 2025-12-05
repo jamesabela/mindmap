@@ -679,7 +679,7 @@
       </div>
     </div>
   </div>
-  </div>
+
   <!-- Help Button (Moved out of toolbar) -->
   <button id="help-btn" title="Help / Tutorial">❓</button>
 
@@ -1519,7 +1519,7 @@
       return depth;
     }
 
-    window.addEventListener('load', () => {
+    function init() {
       loadFromURL();
       // Re-query central node as it might have been re-created by renderMindMap
       const currentCentralNode = document.getElementById(centralNodeId);
@@ -1529,7 +1529,13 @@
       }
 
       setSelectedNode(centralNodeId);
-    });
+    }
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      setTimeout(init, 1);
+    } else {
+      window.addEventListener('DOMContentLoaded', init);
+    }
 
     window.addEventListener('beforeunload', () => {
       updateURL();
