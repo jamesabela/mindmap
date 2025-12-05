@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mind Map Help</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        :root {
+            --bg-gradient: #ffffff;
+            --glass-bg: rgba(255, 255, 255, 0.9);
+            --glass-border: rgba(0, 0, 0, 0.1);
+            --glass-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            --text-primary: #333333;
+            --text-secondary: #666666;
+            --accent-color: #4a90e2;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 20px;
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            text-align: center;
+            color: var(--accent-color);
+        }
+
+        h2 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        li {
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+        }
+
+        .key {
+            background: #f3f4f6;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-family: 'Monaco', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            margin-right: 12px;
+            min-width: 60px;
+            text-align: center;
+            color: #374151;
+            box-shadow: 0 2px 0 #d1d5db;
+        }
+
+        .icon {
+            font-size: 20px;
+            margin-right: 12px;
+            min-width: 30px;
+            text-align: center;
+        }
+
+        .description {
+            color: var(--text-secondary);
+        }
+
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>🧠 How to use Mind Map</h1>
+
+        <h2>⌨️ Keyboard Shortcuts</h2>
+        <ul>
+            <li><span class="key">Tab</span> <span class="description">Create a new <strong>Child Node</strong></span>
+            </li>
+            <li><span class="key">Enter</span> <span class="description">Create a new <strong>Sibling
+                        Node</strong></span></li>
+            <li><span class="key">Del</span> <span class="description">Delete the selected node</span></li>
+            <li><span class="key">Click</span> <span class="description">Select a node to edit text or change
+                    style</span></li>
+            <li><span class="key">Drag</span> <span class="description">Move nodes around the canvas</span></li>
+        </ul>
+
+        <h2>🎨 Toolbar Features</h2>
+        <ul>
+            <li><span class="icon">🎨</span> <span class="description"><strong>Colors:</strong> Click a color swatch to
+                    change the node's background.</span></li>
+            <li><span class="icon">😀</span> <span class="description"><strong>Emojis:</strong> Add visual icons to your
+                    nodes.</span></li>
+            <li><span class="icon">🔗</span> <span class="description"><strong>Link/Image:</strong> Add a hyperlink or
+                    embed an image in the node.</span></li>
+            <li><span class="icon">✂️</span> <span class="description"><strong>Split:</strong> Extract the selected
+                    branch into a new mind map.</span></li>
+            <li><span class="icon">🔄</span> <span class="description"><strong>Auto-layout:</strong> Automatically
+                    organize your nodes.</span></li>
+        </ul>
+
+        <h2>📂 Saving & Exporting</h2>
+        <ul>
+            <li><span class="icon">💾</span> <span class="description"><strong>Save JSON:</strong> Download your mind
+                    map to edit later.</span></li>
+            <li><span class="icon">🖼️</span> <span class="description"><strong>Export PNG:</strong> Save as an
+                    image.</span></li>
+            <li><span class="icon">📊</span> <span class="description"><strong>Export PPTX:</strong> Convert to a
+                    PowerPoint presentation.</span></li>
+            <li><span class="icon">📋</span> <span class="description"><strong>Copy Text:</strong> Get a text outline of
+                    your map.</span></li>
+        </ul>
+
+        <div class="footer">
+            <p>Made with ❤️ for better thinking.</p>
+            <p><a href="mindmapplain.html">← Back to Mind Map</a></p>
+        </div>
+    </div>
+
+</body>
+
+</html>
