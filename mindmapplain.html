@@ -1683,140 +1683,160 @@
       pushToUndo();
 
       const containerRect = container.getBoundingClientRect();
-      const centerX = containerRect.width / 2 - 50;
-      const centerY = containerRect.height / 2 - 30;
+      const centerX = containerRect.width / 2;
+      const centerY = containerRect.height / 2;
 
-      // Position central node at center
-      const centralNodeData = nodesData.find(n => n.id === centralNodeId);
+      // Constants for layout
+      const NODE_WIDTH = 140;
+      const NODE_HEIGHT = 60;
+      const H_GAP = 60;
+      const V_GAP = 20;
 
-      if (centralNodeData) {
-        centralNodeData.x = centerX;
-        centralNodeData.y = centerY;
+      // 1. Build Tree Structure
+      // We need a temporary tree structure to calculate dimensions
+      const rootNodeData = nodesData.find(n => n.id === centralNodeId);
+      if (!rootNodeData) return;
+
+      function buildTree(nodeId) {
+        const node = nodesData.find(n => n.id === nodeId);
+        if (!node) return null;
+
+        const layoutNode = {
+          id: node.id,
+          text: node.text,
+          width: NODE_WIDTH,
+          height: NODE_HEIGHT,
+          x: 0,
+          y: 0,
+          children: [],
+          side: null, // 'left' or 'right'
+          treeHeight: 0
+        };
+
+        // Find children
+        const childNodes = nodesData.filter(n => n.parentId === nodeId);
+        layoutNode.children = childNodes.map(c => buildTree(c.id)).filter(n => n !== null);
+
+        return layoutNode;
       }
 
-      // Group nodes by depth level
-      const nodesByDepth = {}
+      const root = buildTree(centralNodeId);
+      if (!root) return;
 
-        ;
+      // Position root in center
+      root.x = centerX - (root.width / 2);
+      root.y = centerY - (root.height / 2);
 
-      nodesData.forEach(node => {
-        const depth = getNodeDepth(node.id);
+      // 2. Assign Sides (Balance Left/Right for root children)
+      // We alternate sides for immediate children of the root
+      const rightChildren = [];
+      const leftChildren = [];
 
-        if (!nodesByDepth[depth]) {
-          nodesByDepth[depth] = [];
+      root.children.forEach((child, index) => {
+        if (index % 2 === 0) {
+          child.side = "right";
+          rightChildren.push(child);
+        } else {
+          child.side = "left";
+          leftChildren.push(child);
         }
-
-        nodesByDepth[depth].push(node);
       });
 
-      // Layout each depth level in concentric circles
-      const maxDepth = Math.max(...Object.keys(nodesByDepth).map(Number));
+      // 3. Calculate Tree Heights (Pass 1: Bottom-Up)
+      // This ensures we allocate enough vertical space for sub-trees
+      function calculateTreeHeight(node) {
+        if (!node.children || node.children.length === 0) {
+          node.treeHeight = node.height;
+          return node.height;
+        }
 
-      for (let depth = 1; depth <= maxDepth; depth++) {
-        const nodesAtDepth = nodesByDepth[depth];
-        if (!nodesAtDepth || nodesAtDepth.length === 0) continue;
-
-        // Calculate radius for this depth level - increased base radius
-        const baseRadius = 280;
-        const radius = baseRadius * depth;
-
-        // Group nodes by their parent
-        const nodesByParent = {}
-
-          ;
-
-        nodesAtDepth.forEach(node => {
-          if (!nodesByParent[node.parentId]) {
-            nodesByParent[node.parentId] = [];
-          }
-
-          nodesByParent[node.parentId].push(node);
+        let h = 0;
+        node.children.forEach(child => {
+          h += calculateTreeHeight(child);
         });
 
-        // For each parent, distribute its children around it
-        Object.keys(nodesByParent).forEach(parentId => {
-          const parentNode = nodesData.find(n => n.id === parentId);
-          if (!parentNode) return;
+        // Add gaps between children
+        h += (node.children.length - 1) * V_GAP;
 
-          const children = nodesByParent[parentId];
-          const childCount = children.length;
-
-          // Calculate angle step based on number of children
-          const angleStep = 360 / Math.max(childCount, 1);
-
-          // Determine starting angle based on parent's position relative to center
-          let startAngle = 0;
-
-          if (depth > 1) {
-            const dx = parentNode.x - centerX;
-            const dy = parentNode.y - centerY;
-            startAngle = Math.atan2(dy, dx) * 180 / Math.PI;
-          }
-
-          // Position children around parent
-          children.forEach((child, index) => {
-            const angle = (startAngle + (index * angleStep)) * Math.PI / 180;
-            const childRadius = depth === 1 ? radius : 200;
-
-            child.x = parentNode.x + childRadius * Math.cos(angle);
-            child.y = parentNode.y + childRadius * Math.sin(angle);
-
-            // Constrain to viewport
-            child.x = Math.max(50, Math.min(child.x, containerRect.width - 150));
-            child.y = Math.max(100, Math.min(child.y, containerRect.height - 100));
-          });
-        });
+        // The node's treeHeight is the max of its own height and its children's total height
+        // (Usually children stack is taller)
+        node.treeHeight = Math.max(node.height, h);
+        return node.treeHeight;
       }
 
-      // Collision detection and resolution
-      const minDistance = 120; // Minimum distance between node centers
-      const maxIterations = 50;
+      // Calculate heights for all root children
+      root.children.forEach(calculateTreeHeight);
 
-      for (let iteration = 0; iteration < maxIterations; iteration++) {
-        let hasCollision = false;
 
-        // Check all pairs of nodes (excluding central node)
-        for (let i = 0; i < nodesData.length; i++) {
-          if (nodesData[i].id === centralNodeId) continue;
+      // 4. Layout Children (Pass 2: Top-Down)
+      function layoutChildren(parent) {
+        // Separate children by side (only relevant for root, others inherit)
+        // For non-root nodes, all children should be on the same side as the parent
+        let pRightChildren, pLeftChildren;
 
-          for (let j = i + 1; j < nodesData.length; j++) {
-            if (nodesData[j].id === centralNodeId) continue;
-
-            const node1 = nodesData[i];
-            const node2 = nodesData[j];
-
-            const dx = node2.x - node1.x;
-            const dy = node2.y - node1.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (distance < minDistance && distance > 0) {
-              hasCollision = true;
-
-              // Push nodes apart
-              const overlap = minDistance - distance;
-              const angle = Math.atan2(dy, dx);
-
-              const pushX = (overlap / 2) * Math.cos(angle);
-              const pushY = (overlap / 2) * Math.sin(angle);
-
-              node1.x -= pushX;
-              node1.y -= pushY;
-              node2.x += pushX;
-              node2.y += pushY;
-
-              // Constrain to viewport
-              node1.x = Math.max(50, Math.min(node1.x, containerRect.width - 150));
-              node1.y = Math.max(100, Math.min(node1.y, containerRect.height - 100));
-              node2.x = Math.max(50, Math.min(node2.x, containerRect.width - 150));
-              node2.y = Math.max(100, Math.min(node2.y, containerRect.height - 100));
-            }
+        if (parent.id === centralNodeId) {
+          pRightChildren = parent.children.filter(c => c.side === 'right');
+          pLeftChildren = parent.children.filter(c => c.side === 'left');
+        } else {
+          // All children follow the parent's side
+          if (parent.side === 'right') {
+            pRightChildren = parent.children;
+            pLeftChildren = [];
+          } else {
+            pRightChildren = [];
+            pLeftChildren = parent.children;
           }
         }
 
-        // If no collisions detected, we're done
-        if (!hasCollision) break;
+        // Helper to place a stack of children
+        const placeStack = (children, direction) => {
+          if (children.length === 0) return;
+
+          const totalHeight = children.reduce((sum, c) => sum + c.treeHeight, 0) + (children.length - 1) * V_GAP;
+
+          // Start Y: Center the stack relative to the parent
+          let currentY = parent.y + (parent.height / 2) - (totalHeight / 2);
+
+          children.forEach(child => {
+            // Inherit side
+            child.side = direction;
+
+            // Calculate child Y to center it in its allocated slot
+            const childSlotHeight = child.treeHeight;
+            const childY = currentY + (childSlotHeight - child.height) / 2;
+
+            child.y = childY;
+
+            if (direction === 'right') {
+              child.x = parent.x + parent.width + H_GAP;
+            } else {
+              child.x = parent.x - child.width - H_GAP;
+            }
+
+            // Recursively layout this child's children
+            layoutChildren(child);
+
+            currentY += childSlotHeight + V_GAP;
+          });
+        };
+
+        placeStack(pRightChildren, 'right');
+        placeStack(pLeftChildren, 'left');
       }
 
+      layoutChildren(root);
+
+      // 5. Update nodesData and Render
+      function updateNodesData(layoutNode) {
+        const dataNode = nodesData.find(n => n.id === layoutNode.id);
+        if (dataNode) {
+          dataNode.x = layoutNode.x;
+          dataNode.y = layoutNode.y;
+        }
+        layoutNode.children.forEach(updateNodesData);
+      }
+
+      updateNodesData(root);
       renderMindMap();
     }
 
