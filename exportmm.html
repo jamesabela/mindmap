@@ -412,120 +412,138 @@
         return;
       }
 
-      console.log('Central node before:', centralNode.x, centralNode.y);
+      // Constants for layout
+      const NODE_WIDTH = 140;
+      const NODE_HEIGHT = 60;
+      const H_GAP = 60;
+      const V_GAP = 20;
 
-      // Start with central node at origin
-      centralNode.x = 0;
-      centralNode.y = 0;
+      // 1. Build Tree Structure
+      function buildTree(nodeId) {
+        const node = nodes.find(n => n.id === nodeId);
+        if (!node) return null;
 
-      console.log('Central node after setting to origin:', centralNode.x, centralNode.y);
+        const layoutNode = {
+          id: node.id,
+          text: node.text,
+          width: NODE_WIDTH,
+          height: NODE_HEIGHT,
+          x: 0,
+          y: 0,
+          children: [],
+          side: null, // 'left' or 'right'
+          treeHeight: 0
+        };
 
-      // Group nodes by depth level
-      const nodesByDepth = {};
-      nodes.forEach(node => {
-        const depth = getNodeDepth(node, nodes);
-        if (!nodesByDepth[depth]) {
-          nodesByDepth[depth] = [];
+        // Find children
+        const childNodes = nodes.filter(n => n.parentId === nodeId);
+        layoutNode.children = childNodes.map(c => buildTree(c.id)).filter(n => n !== null);
+
+        return layoutNode;
+      }
+
+      const root = buildTree('central-node');
+      if (!root) return;
+
+      // Position root at 0,0 initially
+      root.x = 0;
+      root.y = 0;
+
+      // 2. Assign Sides (Balance Left/Right for root children)
+      const rightChildren = [];
+      const leftChildren = [];
+
+      root.children.forEach((child, index) => {
+        if (index % 2 === 0) {
+          child.side = "right";
+          rightChildren.push(child);
+        } else {
+          child.side = "left";
+          leftChildren.push(child);
         }
-        nodesByDepth[depth].push(node);
       });
 
-      console.log('Nodes by depth:', Object.keys(nodesByDepth).map(d => `Depth ${d}: ${nodesByDepth[d].length} nodes`));
+      // 3. Calculate Tree Heights (Pass 1: Bottom-Up)
+      function calculateTreeHeight(node) {
+        if (!node.children || node.children.length === 0) {
+          node.treeHeight = node.height;
+          return node.height;
+        }
 
-      const maxDepth = Math.max(...Object.keys(nodesByDepth).map(Number));
-
-      // Position nodes in concentric circles
-      for (let depth = 1; depth <= maxDepth; depth++) {
-        const nodesAtDepth = nodesByDepth[depth];
-        if (!nodesAtDepth || nodesAtDepth.length === 0) continue;
-
-        const baseRadius = 280;
-
-        // Group nodes by their parent
-        const nodesByParent = {};
-        nodesAtDepth.forEach(node => {
-          if (!nodesByParent[node.parentId]) {
-            nodesByParent[node.parentId] = [];
-          }
-          nodesByParent[node.parentId].push(node);
+        let h = 0;
+        node.children.forEach(child => {
+          h += calculateTreeHeight(child);
         });
 
-        console.log(`Depth ${depth}: ${Object.keys(nodesByParent).length} parents, ${nodesAtDepth.length} total nodes`);
+        // Add gaps between children
+        h += (node.children.length - 1) * V_GAP;
 
-        // For each parent, distribute its children around it
-        Object.keys(nodesByParent).forEach((parentId, parentIndex) => {
-          const parentNode = nodes.find(n => n.id === parentId);
-          if (!parentNode) return;
-
-          const children = nodesByParent[parentId];
-          const childCount = children.length;
-
-          console.log(`Parent ${parentId}: ${childCount} children`);
-
-          // Distribute children evenly in a circle
-          const angleStep = 360 / Math.max(childCount, 1);
-
-          let startAngle = 0;
-          if (depth > 1) {
-            // For deeper levels, orient away from center
-            const dx = parentNode.x - centralNode.x;
-            const dy = parentNode.y - centralNode.y;
-            startAngle = Math.atan2(dy, dx) * 180 / Math.PI;
-          }
-
-          children.forEach((child, index) => {
-            const angle = (startAngle + (index * angleStep)) * Math.PI / 180;
-            const childRadius = depth === 1 ? baseRadius : 200;
-
-            child.x = parentNode.x + childRadius * Math.cos(angle);
-            child.y = parentNode.y + childRadius * Math.sin(angle);
-
-            console.log(`Positioned ${child.text} at (${Math.round(child.x)}, ${Math.round(child.y)}) - angle ${Math.round(startAngle + index * angleStep)}°`);
-          });
-        });
+        node.treeHeight = Math.max(node.height, h);
+        return node.treeHeight;
       }
 
-      // Collision detection and resolution
-      const minDistance = 120;
-      const maxIterations = 50;
+      root.children.forEach(calculateTreeHeight);
 
-      for (let iteration = 0; iteration < maxIterations; iteration++) {
-        let hasCollision = false;
+      // 4. Layout Children (Pass 2: Top-Down)
+      function layoutChildren(parent) {
+        let pRightChildren, pLeftChildren;
 
-        for (let i = 0; i < nodes.length; i++) {
-          if (nodes[i].id === 'central-node') continue;
-
-          for (let j = i + 1; j < nodes.length; j++) {
-            if (nodes[j].id === 'central-node') continue;
-
-            const node1 = nodes[i];
-            const node2 = nodes[j];
-
-            const dx = node2.x - node1.x;
-            const dy = node2.y - node1.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (distance < minDistance && distance > 0) {
-              hasCollision = true;
-
-              const overlap = minDistance - distance;
-              const angle = Math.atan2(dy, dx);
-
-              const pushX = (overlap / 2) * Math.cos(angle);
-              const pushY = (overlap / 2) * Math.sin(angle);
-
-              node1.x -= pushX;
-              node1.y -= pushY;
-              node2.x += pushX;
-              node2.y += pushY;
-            }
+        if (parent.id === 'central-node') {
+          pRightChildren = parent.children.filter(c => c.side === 'right');
+          pLeftChildren = parent.children.filter(c => c.side === 'left');
+        } else {
+          if (parent.side === 'right') {
+            pRightChildren = parent.children;
+            pLeftChildren = [];
+          } else {
+            pRightChildren = [];
+            pLeftChildren = parent.children;
           }
         }
 
-        if (!hasCollision) break;
+        const placeStack = (children, direction) => {
+          if (children.length === 0) return;
+
+          const totalHeight = children.reduce((sum, c) => sum + c.treeHeight, 0) + (children.length - 1) * V_GAP;
+          let currentY = parent.y + (parent.height / 2) - (totalHeight / 2);
+
+          children.forEach(child => {
+            child.side = direction;
+            const childSlotHeight = child.treeHeight;
+            const childY = currentY + (childSlotHeight - child.height) / 2;
+
+            child.y = childY;
+
+            if (direction === 'right') {
+              child.x = parent.x + parent.width + H_GAP;
+            } else {
+              child.x = parent.x - child.width - H_GAP;
+            }
+
+            layoutChildren(child);
+            currentY += childSlotHeight + V_GAP;
+          });
+        };
+
+        placeStack(pRightChildren, 'right');
+        placeStack(pLeftChildren, 'left');
       }
 
-      // Calculate bounds and center the entire mind map
+      layoutChildren(root);
+
+      // 5. Update original nodes array with new positions
+      function updateNodesData(layoutNode) {
+        const dataNode = nodes.find(n => n.id === layoutNode.id);
+        if (dataNode) {
+          dataNode.x = layoutNode.x;
+          dataNode.y = layoutNode.y;
+        }
+        layoutNode.children.forEach(updateNodesData);
+      }
+
+      updateNodesData(root);
+
+      // 6. Center the map at (600, 400)
       let minX = Infinity, maxX = -Infinity;
       let minY = Infinity, maxY = -Infinity;
 
@@ -536,7 +554,6 @@
         maxY = Math.max(maxY, node.y);
       });
 
-      // Calculate center offset to position mind map at (600, 400)
       const targetCenterX = 600;
       const targetCenterY = 400;
       const currentCenterX = (minX + maxX) / 2;
@@ -544,7 +561,6 @@
       const offsetX = targetCenterX - currentCenterX;
       const offsetY = targetCenterY - currentCenterY;
 
-      // Apply offset to all nodes
       nodes.forEach(node => {
         node.x += offsetX;
         node.y += offsetY;
