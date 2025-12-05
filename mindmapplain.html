@@ -588,33 +588,6 @@
       outline: 2px solid var(--primary-color);
       background: #fff;
     }
-
-    /* Help Button - Top Right */
-    #help-btn {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      z-index: 2000;
-      font-size: 24px;
-      background: white;
-      border: 1px solid rgba(0, 0, 0, 0.1);
-      border-radius: 50%;
-      width: 48px;
-      height: 48px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      transition: all 0.2s ease;
-      padding: 0;
-    }
-
-    #help-btn:hover {
-      transform: scale(1.1);
-      background: #f9fafb;
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-    }
   </style>
 
 </head>
@@ -663,7 +636,7 @@
           title="Open JSON">📂</button><input type="file" id="upload-json" /><button id="download-json-btn"
           class="main-button" title="Save JSON">💾</button><button id="export-png-btn" class="main-button"
           title="Export PNG">🖼️</button><button id="export-pptx-btn" class="main-button"
-          title="Export PPTX">📊</button>
+          title="Export PPTX">📊</button><button id="help-btn" class="main-button" title="Help">❓</button>
         <div class="attribution" style="margin-left: 8px;"><a
             href="https://creativecommons.org/licenses/by-nc-sa/4.0/?ref=chooser-v1" target="_blank"
             rel="license noopener noreferrer" title="CC BY-NC-SA 4.0"><img style="height:18px!important;"
@@ -680,8 +653,7 @@
     </div>
   </div>
 
-  <!-- Help Button (Moved out of toolbar) -->
-  <button id="help-btn" title="Help / Tutorial">❓</button>
+
 
   <!-- Warning Modal -->
   <div id="modal-overlay">
@@ -1556,7 +1528,7 @@
     addChildBtn.addEventListener('click', () => addNode(selectedNodeId));
     document.getElementById('download-json-btn').addEventListener('click', downloadJSON);
     document.getElementById('auto-layout-btn').addEventListener('click', autoLayout);
-    document.getElementById('help-btn').addEventListener('click', () => loadTutorial());
+    document.getElementById('help-btn').addEventListener('click', () => window.open('help.html', '_blank'));
 
     function loadTutorial(force = false) {
 
