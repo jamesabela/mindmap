@@ -588,6 +588,113 @@
       outline: 2px solid var(--primary-color);
       background: #fff;
     }
+
+    /* Mode Toggle Button */
+    #mode-toggle-btn {
+      font-weight: 600;
+      min-width: 80px;
+      border: 2px solid var(--primary-color);
+    }
+
+    #mode-toggle-btn.edit-mode {
+      background: #10b981;
+      color: white;
+      border-color: #10b981;
+    }
+
+    #mode-toggle-btn.move-mode {
+      background: #3b82f6;
+      color: white;
+      border-color: #3b82f6;
+    }
+
+    /* Visual feedback for modes */
+    body.move-mode .node {
+      cursor: move;
+    }
+
+    body.edit-mode .node {
+      cursor: text;
+    }
+
+    body.move-mode .node[contenteditable="true"] {
+      cursor: move !important;
+    }
+
+    /* Responsive toolbar for iPad */
+    @media (max-width: 1024px) {
+      #toolbar-dock {
+        flex-wrap: wrap;
+        max-width: 95%;
+        gap: 6px;
+        padding: 6px 10px;
+      }
+
+      .icon-btn,
+      .main-button {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 10px 14px;
+        font-size: 14px;
+      }
+
+      #mode-toggle-btn {
+        min-width: 100px;
+        order: -1;
+        /* Show first on mobile */
+      }
+
+      /* Hide less essential tools on tablet */
+      .hide-tablet {
+        display: none !important;
+      }
+
+      /* Simplify color palette - show only 3 colors */
+      #color-palette .color-swatch:nth-child(n+4) {
+        display: none;
+      }
+
+      /* Simplify emojis - show only first 3 */
+      #emoji-buttons .emoji-btn:nth-child(n+4) {
+        display: none;
+      }
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+
+      /* Hide on mobile */
+      .hide-mobile {
+        display: none !important;
+      }
+
+      /* Show only 2 colors on mobile */
+      #color-palette .color-swatch:nth-child(n+3) {
+        display: none;
+      }
+
+      /* Show only 2 emojis on mobile */
+      #emoji-buttons .emoji-btn:nth-child(n+3) {
+        display: none;
+      }
+
+      /* Hide URL status on mobile */
+      #url-status {
+        display: none;
+      }
+
+      /* Make toolbar even more compact */
+      #toolbar-dock {
+        gap: 4px;
+        padding: 4px 6px;
+      }
+
+      .icon-btn,
+      .main-button {
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+    }
   </style>
 
 </head>
@@ -599,15 +706,19 @@
       data-placeholder="Central topic"></div>
     <div id="toolbar-dock">
       <!-- Main Actions -->
-      <div class="toolbar-panel" id="main-actions"><button id="add-node-btn" class="main-button primary-btn"
+      <div class="toolbar-panel" id="main-actions"><button id="mode-toggle-btn" class="main-button move-mode"
+          title="Toggle Move/Edit Mode">🔄 Move</button>
+        <div class="divider"></div><button id="add-node-btn" class="main-button primary-btn"
           title="Add Sibling (Enter)">+Node</button><button id="add-child-btn" class="main-button primary-btn"
           title="Add Child (Tab)">+Child</button><button id="delete-node-btn" class="main-button delete-button"
-          title="Delete Selected">Del</button><button id="split-node-btn" class="icon-btn"
+          title="Delete Selected">Del</button><button id="split-node-btn" class="icon-btn hide-mobile"
           title="Split into new Mindmap">✂️</button>
-        <div class="divider"></div><button id="undo-btn" class="icon-btn" title="Undo">↩</button><button id="redo-btn"
-          class="icon-btn" title="Redo">↪</button><button id="add-link-btn" class="icon-btn"
-          title="Add/Edit Link">🔗</button><button id="copy-text-btn" class="icon-btn" title="Copy Text">📋</button>
-        <div class="divider"></div><button id="auto-layout-btn" class="icon-btn" title="Auto-layout nodes">🔄</button>
+        <div class="divider"></div><button id="undo-btn" class="icon-btn hide-mobile" title="Undo">↩</button><button
+          id="redo-btn" class="icon-btn hide-mobile" title="Redo">↪</button><button id="add-link-btn"
+          class="icon-btn hide-mobile" title="Add/Edit Link">🔗</button><button id="copy-text-btn"
+          class="icon-btn hide-tablet" title="Copy Text">📋</button>
+        <div class="divider"></div><button id="auto-layout-btn" class="icon-btn hide-mobile"
+          title="Auto-layout nodes">🔄</button>
       </div>
       <!-- Styling & Emojis -->
       <div class="toolbar-panel" id="style-panel">
@@ -631,13 +742,14 @@
       <!-- File Operations -->
       <div class="toolbar-panel" id="file-ops">
         <div class="divider"></div><a href="https://jamesabela.github.io/jsfun/mindmapplain.html" target="_blank"
-          style="text-decoration: none;"><button class="main-button" title="New Mindmap">New</button></a><button
-          id="upload-json-btn" class="main-button" onclick="document.getElementById('upload-json').click()"
-          title="Open JSON">📂</button><input type="file" id="upload-json" /><button id="download-json-btn"
-          class="main-button" title="Save JSON">💾</button><button id="export-png-btn" class="main-button"
-          title="Export PNG">🖼️</button><button id="export-pptx-btn" class="main-button"
-          title="Export PPTX">📊</button><button id="help-btn" class="main-button" title="Help">❓</button>
-        <div class="attribution" style="margin-left: 8px;"><a
+          style="text-decoration: none;"><button class="main-button hide-tablet"
+            title="New Mindmap">New</button></a><button id="upload-json-btn" class="main-button hide-tablet"
+          onclick="document.getElementById('upload-json').click()" title="Open JSON">📂</button><input type="file"
+          id="upload-json" /><button id="download-json-btn" class="main-button" title="Save JSON">💾</button><button
+          id="export-png-btn" class="main-button hide-tablet" title="Export PNG">🖼️</button><button
+          id="export-pptx-btn" class="main-button hide-tablet" title="Export PPTX">📊</button><button id="help-btn"
+          class="main-button" title="Help">❓</button>
+        <div class="attribution hide-tablet" style="margin-left: 8px;"><a
             href="https://creativecommons.org/licenses/by-nc-sa/4.0/?ref=chooser-v1" target="_blank"
             rel="license noopener noreferrer" title="CC BY-NC-SA 4.0"><img style="height:18px!important;"
               src="https://mirrors.creativecommons.org/presskit/icons/cc.svg?ref=chooser-v1" alt=""><img
@@ -743,6 +855,7 @@
       ; // Track next angle for each parent's children
     let urlStorageEnabled = true; // Toggle for URL storage
     let isInitialized = false; // Prevent URL updates before initial load
+    let interactionMode = 'move'; // 'move' or 'edit' - for iPad usability
 
     function generateId() {
       return 'node-' + Math.random().toString(36).substr(2, 9);
@@ -765,6 +878,42 @@
 
       if (centralNodeData) {
         documentTitle.textContent = centralNodeData.text || 'Mind Map';
+      }
+    }
+
+    // Mode Toggle Functions for iPad usability
+    function toggleMode() {
+      interactionMode = interactionMode === 'move' ? 'edit' : 'move';
+      updateModeUI();
+      localStorage.setItem('mindmap-interaction-mode', interactionMode);
+    }
+
+    function updateModeUI() {
+      const modeBtn = document.getElementById('mode-toggle-btn');
+      const allNodes = document.querySelectorAll('.node');
+
+      if (interactionMode === 'edit') {
+        // Edit Mode
+        modeBtn.textContent = '✏️ Edit';
+        modeBtn.className = 'main-button edit-mode';
+        modeBtn.title = 'Switch to Move Mode';
+        document.body.className = 'edit-mode';
+
+        // Enable contenteditable
+        allNodes.forEach(node => {
+          node.contentEditable = 'true';
+        });
+      } else {
+        // Move Mode
+        modeBtn.textContent = '🔄 Move';
+        modeBtn.className = 'main-button move-mode';
+        modeBtn.title = 'Switch to Edit Mode';
+        document.body.className = 'move-mode';
+
+        // Disable contenteditable
+        allNodes.forEach(node => {
+          node.contentEditable = 'false';
+        });
       }
     }
 
@@ -818,6 +967,7 @@
       highlightSelectedNode();
       updateDocumentTitle();
       updateURL();
+      updateModeUI(); // Apply current mode to all nodes
     }
 
     function addEventListenersToNode(nodeDiv, nodeId) {
@@ -828,7 +978,14 @@
 
       nodeDiv.addEventListener('keydown', (e) => handleKeyDown(e, nodeId));
 
-      nodeDiv.addEventListener('mousedown', startDrag);
+      nodeDiv.addEventListener('mousedown', (e) => {
+        // On desktop (non-touch), allow dragging in both modes
+        // On touch devices, only allow dragging in move mode
+        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        if (interactionMode === 'move' || !isTouchDevice) {
+          startDrag(e);
+        }
+      });
 
       nodeDiv.addEventListener('input', () => updateNodeText(nodeId));
 
@@ -1492,6 +1649,11 @@
     }
 
     function init() {
+      // Initialize interaction mode based on device type
+      const savedMode = localStorage.getItem('mindmap-interaction-mode');
+      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      interactionMode = savedMode || (isTouchDevice ? 'move' : 'edit');
+
       loadFromURL();
       // Re-query central node as it might have been re-created by renderMindMap
       const currentCentralNode = document.getElementById(centralNodeId);
@@ -1501,6 +1663,7 @@
       }
 
       setSelectedNode(centralNodeId);
+      updateModeUI(); // Apply initial mode
     }
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
@@ -1518,6 +1681,7 @@
     });
 
     // Event listeners for main buttons
+    document.getElementById('mode-toggle-btn').addEventListener('click', toggleMode);
     copyTextBtn.addEventListener('click', copyText);
     deleteNodeBtn.addEventListener('click', deleteSelectedNode);
     document.getElementById('split-node-btn').addEventListener('click', splitNode);
