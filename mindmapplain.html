@@ -621,6 +621,18 @@
       cursor: move !important;
     }
 
+    /* Drop target highlighting */
+    .node.drop-target {
+      border: 3px dashed #10b981 !important;
+      background: rgba(16, 185, 129, 0.1) !important;
+      box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2) !important;
+    }
+
+    .node.dragging {
+      opacity: 0.5;
+      cursor: grabbing !important;
+    }
+
     /* Responsive toolbar for iPad */
     @media (max-width: 1024px) {
       #toolbar-dock {
@@ -1328,6 +1340,7 @@
     let currentDraggedNodeId = null;
     let dragOffsetX = 0;
     let dragOffsetY = 0;
+    let currentDropTarget = null;
 
     function startDrag(event) {
       if (event.target.classList.contains('node')) {
@@ -1342,6 +1355,9 @@
 
         dragOffsetX = clientX - nodeRect.left;
         dragOffsetY = clientY - nodeRect.top;
+
+        // Add visual feedback for dragging
+        event.target.classList.add('dragging');
 
         // Add both mouse and touch event listeners
         document.addEventListener('mousemove', dragNode);
@@ -1379,10 +1395,78 @@
         node.y = newY;
         renderMindMap();
       }
+
+      // Check if we're hovering over another node (potential drop target)
+      if (interactionMode === 'move') {
+        const allNodes = document.querySelectorAll('.node');
+        let foundTarget = null;
+
+        allNodes.forEach(nodeDiv => {
+          // Skip the dragged node itself
+          if (nodeDiv.id === currentDraggedNodeId) return;
+
+          const rect = nodeDiv.getBoundingClientRect();
+          if (clientX >= rect.left && clientX <= rect.right &&
+            clientY >= rect.top && clientY <= rect.bottom) {
+            foundTarget = nodeDiv;
+          }
+        });
+
+        // Update drop target highlighting
+        if (foundTarget !== currentDropTarget) {
+          // Remove highlight from previous target
+          if (currentDropTarget) {
+            currentDropTarget.classList.remove('drop-target');
+          }
+          // Add highlight to new target
+          if (foundTarget) {
+            foundTarget.classList.add('drop-target');
+          }
+          currentDropTarget = foundTarget;
+        }
+      }
     }
 
 
     function stopDrag() {
+      // Handle reparenting if dropped on another node
+      if (currentDropTarget && currentDraggedNodeId && interactionMode === 'move') {
+        const targetNodeId = currentDropTarget.id;
+        const draggedNode = nodesData.find(n => n.id === currentDraggedNodeId);
+
+        // Prevent making a node its own parent or creating circular dependencies
+        if (targetNodeId !== currentDraggedNodeId && !isDescendant(targetNodeId, currentDraggedNodeId)) {
+          // Update the parent relationship
+          if (draggedNode) {
+            draggedNode.parentId = targetNodeId;
+
+            // Optionally reposition the node near its new parent
+            const targetNode = nodesData.find(n => n.id === targetNodeId);
+            if (targetNode) {
+              // Position it to the right of the new parent
+              draggedNode.x = targetNode.x + 200;
+              draggedNode.y = targetNode.y;
+            }
+
+            saveState();
+            renderMindMap();
+          }
+        }
+      }
+
+      // Clean up
+      if (currentDropTarget) {
+        currentDropTarget.classList.remove('drop-target');
+        currentDropTarget = null;
+      }
+
+      if (currentDraggedNodeId) {
+        const draggedElement = document.getElementById(currentDraggedNodeId);
+        if (draggedElement) {
+          draggedElement.classList.remove('dragging');
+        }
+      }
+
       isDraggingFlag = false;
       currentDraggedNodeId = null;
       document.removeEventListener('mousemove', dragNode);
@@ -1390,6 +1474,20 @@
       document.removeEventListener('touchmove', dragNode);
       document.removeEventListener('touchend', stopDrag);
       updateURL();
+    }
+
+    // Helper function to check if a node is a descendant of another
+    function isDescendant(potentialDescendantId, ancestorId) {
+      let currentNode = nodesData.find(n => n.id === potentialDescendantId);
+
+      while (currentNode && currentNode.parentId) {
+        if (currentNode.parentId === ancestorId) {
+          return true;
+        }
+        currentNode = nodesData.find(n => n.id === currentNode.parentId);
+      }
+
+      return false;
     }
 
     function focusNode(nodeId) {
