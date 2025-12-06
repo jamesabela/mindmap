@@ -987,6 +987,14 @@
         }
       });
 
+      // Add touch event listener for iPad/mobile
+      nodeDiv.addEventListener('touchstart', (e) => {
+        // Only allow dragging in move mode on touch devices
+        if (interactionMode === 'move') {
+          startDrag(e);
+        }
+      });
+
       nodeDiv.addEventListener('input', () => updateNodeText(nodeId));
 
       // Toggle between edit and view mode to prevent duplicate icons
@@ -1323,18 +1331,38 @@
         currentDraggedNodeId = event.target.id;
         const nodeRect = event.target.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
-        dragOffsetX = event.clientX - nodeRect.left;
-        dragOffsetY = event.clientY - nodeRect.top;
+
+        // Handle both mouse and touch events
+        const clientX = event.clientX || (event.touches && event.touches[0].clientX);
+        const clientY = event.clientY || (event.touches && event.touches[0].clientY);
+
+        dragOffsetX = clientX - nodeRect.left;
+        dragOffsetY = clientY - nodeRect.top;
+
+        // Add both mouse and touch event listeners
         document.addEventListener('mousemove', dragNode);
         document.addEventListener('mouseup', stopDrag);
+        document.addEventListener('touchmove', dragNode);
+        document.addEventListener('touchend', stopDrag);
       }
     }
 
     function dragNode(event) {
       if (!isDraggingFlag || !currentDraggedNodeId) return;
+
+      // Prevent default touch behavior (scrolling)
+      if (event.type === 'touchmove') {
+        event.preventDefault();
+      }
+
       const containerRect = container.getBoundingClientRect();
-      let newX = event.clientX - containerRect.left - dragOffsetX;
-      let newY = event.clientY - containerRect.top - dragOffsetY;
+
+      // Handle both mouse and touch events
+      const clientX = event.clientX || (event.touches && event.touches[0].clientX);
+      const clientY = event.clientY || (event.touches && event.touches[0].clientY);
+
+      let newX = clientX - containerRect.left - dragOffsetX;
+      let newY = clientY - containerRect.top - dragOffsetY;
 
       // Constrain X and Y to the bounds of the container
       newX = Math.max(0, Math.min(newX, containerRect.width - 100)); // Ensure node stays within the width of the container
@@ -1355,6 +1383,8 @@
       currentDraggedNodeId = null;
       document.removeEventListener('mousemove', dragNode);
       document.removeEventListener('mouseup', stopDrag);
+      document.removeEventListener('touchmove', dragNode);
+      document.removeEventListener('touchend', stopDrag);
       updateURL();
     }
 
