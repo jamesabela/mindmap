@@ -864,11 +864,16 @@
     // Initialize central node with fixed ID and empty text
     const centralNodeId = 'central-node';
 
+    // Initialize central node at center of viewport
+    const containerRect = container.getBoundingClientRect();
+    const centerX = containerRect.width / 2 - 80; // Offset by approximate half node width
+    const centerY = containerRect.height / 2 - 40; // Offset by approximate half node height
+
     nodesData.push({
       id: centralNodeId,
       parentId: null,
-      x: 0,
-      y: 0,
+      x: centerX,
+      y: centerY,
       color: colors[0],
       text: '' // Empty text for central node to show placeholder
     });
