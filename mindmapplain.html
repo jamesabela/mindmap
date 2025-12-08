@@ -2218,123 +2218,134 @@
       renderMindMap();
     }
 
-    exportPngBtn.addEventListener('click', function () {
-      document.body.classList.add('exporting');
+    // Helper: Capture the full mind map as an image data URL
+    function captureMindMapImage() {
+      return new Promise((resolve, reject) => {
+        // 1. Calculate Bounds
+        const bounds = getMindMapBounds();
+        const padding = 100;
+        const width = bounds.maxX - bounds.minX + (padding * 2);
+        const height = bounds.maxY - bounds.minY + (padding * 2);
 
-      // 1. Calculate Bounds
+        // Warn if dimensions are potentially unsafe (only verify once if called directly)
+        if (width > 16000 || height > 16000) {
+          console.warn('Canvas dimensions are very large.');
+        }
+
+        // 2. Create Temporary Container
+        const exportContainer = document.createElement('div');
+        exportContainer.style.position = 'absolute';
+        exportContainer.style.top = '0';
+        exportContainer.style.left = '0';
+        exportContainer.style.zIndex = '-9999';
+        exportContainer.style.width = width + 'px';
+        exportContainer.style.height = height + 'px';
+        exportContainer.style.backgroundColor = 'white';
+        exportContainer.style.visibility = 'visible';
+
+        document.body.appendChild(exportContainer);
+
+        const offsetX = -bounds.minX + padding;
+        const offsetY = -bounds.minY + padding;
+
+        // 3. Create SVG for lines
+        const exportSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        exportSvg.setAttribute('width', width);
+        exportSvg.setAttribute('height', height);
+        exportSvg.style.position = 'absolute';
+        exportSvg.style.top = '0';
+        exportSvg.style.left = '0';
+        exportSvg.style.pointerEvents = 'none';
+        exportContainer.appendChild(exportSvg);
+
+        // Draw lines
+        nodesData.forEach(node => {
+          if (node.parentId) {
+            const parent = nodesData.find(n => n.id === node.parentId);
+            if (parent) {
+              const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+              // Use same offset logic as original drawLine (+50, +30)
+              line.setAttribute('x1', parent.x + 50 + offsetX);
+              line.setAttribute('y1', parent.y + 30 + offsetY);
+              line.setAttribute('x2', node.x + 50 + offsetX);
+              line.setAttribute('y2', node.y + 30 + offsetY);
+              line.setAttribute('stroke', 'rgba(0, 0, 0, 0.4)');
+              line.setAttribute('stroke-width', '2');
+              exportSvg.appendChild(line);
+            }
+          }
+        });
+
+        // 4. Render Nodes
+        nodesData.forEach(node => {
+          const nodeEl = document.createElement('div');
+          nodeEl.className = 'node';
+          if (node.id === 'central-node') nodeEl.classList.add('central-node');
+
+          nodeEl.style.position = 'absolute';
+          nodeEl.style.left = (node.x + offsetX) + 'px';
+          nodeEl.style.top = (node.y + offsetY) + 'px';
+          nodeEl.style.backgroundColor = node.color;
+
+          nodeEl.style.transition = 'none';
+          nodeEl.style.border = '1px solid rgba(0,0,0,0.1)';
+
+          renderNodeContent(nodeEl, node, false);
+
+          exportContainer.appendChild(nodeEl);
+        });
+
+        // 5. Capture with html2canvas (with delay)
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            html2canvas(exportContainer, {
+              scale: 2,
+              backgroundColor: '#ffffff',
+              width: width,
+              height: height,
+              logging: false
+            }).then(canvas => {
+              const imgData = canvas.toDataURL('image/png');
+              document.body.removeChild(exportContainer);
+              resolve(imgData);
+            }).catch(err => {
+              document.body.removeChild(exportContainer);
+              reject(err);
+            });
+          }, 100);
+        });
+      });
+    }
+
+    exportPngBtn.addEventListener('click', function () {
+      // Check size first
       const bounds = getMindMapBounds();
       const padding = 100;
       const width = bounds.maxX - bounds.minX + (padding * 2);
       const height = bounds.maxY - bounds.minY + (padding * 2);
 
-      // Warn if dimensions are potentially unsafe for canvas
       if (width > 16000 || height > 16000) {
         if (!confirm('This mind map is very large and might fail to export. Try creating it anyway?')) {
-          document.body.classList.remove('exporting');
           return;
         }
       }
 
-      // 2. Create Temporary Container
-      const exportContainer = document.createElement('div');
-      exportContainer.style.position = 'absolute'; // Changed from fixed to absolute to avoid viewport issues
-      exportContainer.style.top = '0';
-      exportContainer.style.left = '0';
-      // Use Z-index to hide behind main content instead of translating off-screen
-      // Translating off-screen prevents the browser from painting, resulting in blank images
-      exportContainer.style.zIndex = '-9999';
-      exportContainer.style.width = width + 'px';
-      exportContainer.style.height = height + 'px';
-      exportContainer.style.backgroundColor = 'white';
-      // Ensure visibility is 'visible' for capture, but hidden by z-index
-      exportContainer.style.visibility = 'visible';
+      document.body.classList.add('exporting');
 
-      document.body.appendChild(exportContainer);
-
-      // We need to shift everything by (-minX + padding, -minY + padding)
-      const offsetX = -bounds.minX + padding;
-      const offsetY = -bounds.minY + padding;
-
-      // 3. Create SVG for lines
-      const exportSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      exportSvg.setAttribute('width', width);
-      exportSvg.setAttribute('height', height);
-      exportSvg.style.position = 'absolute';
-      exportSvg.style.top = '0';
-      exportSvg.style.left = '0';
-      exportSvg.style.pointerEvents = 'none';
-      exportContainer.appendChild(exportSvg);
-
-      // Draw lines
-      nodesData.forEach(node => {
-        if (node.parentId) {
-          const parent = nodesData.find(n => n.id === node.parentId);
-          if (parent) {
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            // Use same offset logic as original drawLine (+50, +30)
-            line.setAttribute('x1', parent.x + 50 + offsetX);
-            line.setAttribute('y1', parent.y + 30 + offsetY);
-            line.setAttribute('x2', node.x + 50 + offsetX);
-            line.setAttribute('y2', node.y + 30 + offsetY);
-            line.setAttribute('stroke', 'rgba(0, 0, 0, 0.4)');
-            line.setAttribute('stroke-width', '2');
-            exportSvg.appendChild(line);
-          }
-        }
-      });
-
-      // 4. Render Nodes
-      nodesData.forEach(node => {
-        const nodeEl = document.createElement('div');
-        nodeEl.className = 'node';
-        if (node.id === 'central-node') nodeEl.classList.add('central-node');
-
-        nodeEl.style.position = 'absolute';
-        nodeEl.style.left = (node.x + offsetX) + 'px';
-        nodeEl.style.top = (node.y + offsetY) + 'px';
-        nodeEl.style.backgroundColor = node.color;
-
-        // Remove transitions for static capture
-        nodeEl.style.transition = 'none';
-        nodeEl.style.boxShadow = 'none'; // Optional: remove shadow for cleaner print? Or keep.
-        // Let's keep shadow for look, but ensure border is standard.
-        nodeEl.style.border = '1px solid rgba(0,0,0,0.1)';
-
-        // Reuse our helper to render inner content (text, images, links)
-        // Pass 'false' for editMode
-        renderNodeContent(nodeEl, node, false);
-
-        exportContainer.appendChild(nodeEl);
-      });
-
-      // 5. Capture with html2canvas (with delay)
-      // Small delay to allow the DOM to render/paint the new elements
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          html2canvas(exportContainer, {
-            scale: 2,
-            backgroundColor: '#ffffff',
-            width: width,
-            height: height,
-            logging: false
-          }).then(canvas => {
-            const imgData = canvas.toDataURL('image/png');
-            const link = document.createElement('a');
-            const centralNodeText = nodesData.find(n => n.id === centralNodeId)?.text || 'MindMap';
-            const fileName = `${centralNodeText.replace(/\s+/g, '_') || 'MindMap'}.png`;
-            link.href = imgData;
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }).catch(err => {
-            console.error('PNG export error:', err);
-            alert('Error creating PNG. Please try again.');
-          }).finally(() => {
-            document.body.removeChild(exportContainer);
-            document.body.classList.remove('exporting');
-          });
-        }, 100); // 100ms delay
+      captureMindMapImage().then(imgData => {
+        const link = document.createElement('a');
+        const centralNodeText = nodesData.find(n => n.id === centralNodeId)?.text || 'MindMap';
+        const fileName = `${centralNodeText.replace(/\s+/g, '_') || 'MindMap'}.png`;
+        link.href = imgData;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }).catch(err => {
+        console.error('PNG export error:', err);
+        alert('Error creating PNG. Please try again.');
+      }).finally(() => {
+        document.body.classList.remove('exporting');
       });
     });
 
@@ -2623,105 +2634,99 @@
       const pptx = new PptxGenJS();
 
       // Slide 1: Title Slide with Central Node Name
-      // Find central node dynamically (node with no parent)
       const centralNode = nodesData.find(n => !n.parentId);
       const centralNodeText = centralNode?.text || 'Mind Map';
 
-      const titleSlide = pptx.addSlide({
-        masterName: 'TITLE_SLIDE'
-      });
-
-      // Expand the title text box for the first slide
+      const titleSlide = pptx.addSlide({ masterName: 'TITLE_SLIDE' });
       titleSlide.addText(centralNodeText, {
-        x: 0.5,
-        y: 2,
-        w: 9, // Expanding the width of the title text box
-        h: 1, // Expanding the height of the title text box
-        fontSize: 36,
-        bold: true,
-        align: 'center'
+        x: 0.5, y: 2, w: 9, h: 1,
+        fontSize: 36, bold: true, align: 'center'
       });
 
-      // Slide 2: Mind Map Image
-      const slide2 = pptx.addSlide();
-
-      // Hide toolbar for the export
+      // Slide 2: Mind Map Image (Full Capture)
       document.body.classList.add('exporting');
 
-      // Calculate bounds for PPTX export too
-      const bounds = getMindMapBounds();
-      const padding = 50;
-      const width = bounds.maxX - bounds.minX + (padding * 2);
-      const height = bounds.maxY - bounds.minY + (padding * 2);
-      const originalTransform = canvasLayer.style.transform;
+      captureMindMapImage().then(imgData => {
+        const slide2 = pptx.addSlide();
+        slide2.addImage({ data: imgData, x: 0, y: 0, w: 10, h: 5.625 });
 
-      // Shift to show all content
-      canvasLayer.style.transform = `translate3d(${-bounds.minX + padding}px, ${-bounds.minY + padding}px, 0)`;
+        // Generate Topic Slides (One per main node)
+        const mainNodes = nodesData.filter(n => n.parentId === centralNodeId);
 
-      html2canvas(document.querySelector('#mindmap-container'), {
-        scale: 2,
-        backgroundColor: null,
-        useCORS: true,
-        width: width,
-        height: height,
-        windowWidth: width,
-        windowHeight: height,
-        scrollX: 0,
-        scrollY: 0
-      }).then(canvas => {
-        const imgData = canvas.toDataURL('image/png');
+        // Sort main nodes by Y/X position to follow visual order? Or creation order?
+        // Let's sort by Y roughly
+        mainNodes.sort((a, b) => a.y - b.y);
 
-        slide2.addImage({
-          data: imgData, x: 0, y: 0, w: 10, h: 5.625
-        });
+        mainNodes.forEach(mainNode => {
+          // Recursive function to build all bullet items first
+          function getDescendantItems(parentId, level) {
+            const children = nodesData.filter(n => n.parentId === parentId);
+            children.sort((a, b) => a.y - b.y); // Visual order
 
-        // Slide 3: Single Text Box with Proper Bulleted List (Flat, no indentation)
-        const slide3 = pptx.addSlide();
+            let items = [];
+            children.forEach(child => {
+              items.push({
+                text: child.text,
+                options: {
+                  indentLevel: level,
+                  breakLine: true,
+                  bullet: true,
+                  fontSize: 18 - (Math.min(level, 4) * 2) // Slightly smaller for deeper levels, capped
+                }
+              });
 
-        // Title for the slide
-        slide3.addText(centralNodeText, {
-          x: 0.5,
-          y: 0.1,
-          w: 9, // Make the text box wide enough
-          h: 1, // Adjust the height as needed for the title
-          fontSize: 24,
-          bold: true
-        });
+              // Recursively get next level
+              items = items.concat(getDescendantItems(child.id, level + 1));
+            });
+            return items;
+          }
 
-        // Create an array of text objects for rich text support (links)
-        const textItems = nodesData
-          .filter(n => n.id !== centralNodeId)
-          .map(node => ({
-            text: node.text || 'Node',
-            options: {
-              breakLine: true,
-              hyperlink: node.link ? { url: node.link } : undefined,
-              color: node.link ? '0563C1' : undefined // Standard link blue
+          const allBulletItems = getDescendantItems(mainNode.id, 0);
+
+          // Pagination Logic
+          const ITEMS_PER_SLIDE = 10;
+
+          // If no items, still create one slide
+          if (allBulletItems.length === 0) {
+            const slide = pptx.addSlide();
+            slide.addText(mainNode.text, { x: 0.5, y: 0.5, w: 9, h: 1, fontSize: 24, bold: true, color: '363636' });
+            slide.addText("(No details)", { x: 0.5, y: 1.5, w: 9, h: 1, color: '888888', italic: true });
+            return;
+          }
+
+          // Chunk items
+          for (let i = 0; i < allBulletItems.length; i += ITEMS_PER_SLIDE) {
+            const chunk = allBulletItems.slice(i, i + ITEMS_PER_SLIDE);
+            const pageIndex = Math.floor(i / ITEMS_PER_SLIDE);
+            const slide = pptx.addSlide();
+
+            // Title with suffix for pages > 1
+            let title = mainNode.text;
+            if (pageIndex > 0) {
+              title += ` (${pageIndex + 1})`;
             }
-          }));
 
-        // Add the text items as a bulleted list
-        slide3.addText(textItems, {
-          x: 0.5,  // X position for the text box
-          y: 1,    // Y position for the bullets
-          w: 9,    // Width of the text box
-          h: 4.5,  // Height of the text box
-          fontSize: 18,
-          align: 'left',
-          bullet: true  // Enable PowerPoint's bullet functionality
+            slide.addText(title, {
+              x: 0.5, y: 0.5, w: 9, h: 1,
+              fontSize: 24, bold: true, color: '363636'
+            });
+
+            slide.addText(chunk, {
+              x: 0.5, y: 1.5, w: 9, h: 4,
+              align: 'left',
+              color: '555555'
+            });
+          }
         });
 
-
-        // Name the file based on the central node's text
+        // Save
         const fileName = `${centralNodeText.replace(/\s+/g, '_') || 'MindMap'}.pptx`;
+        pptx.writeFile({ fileName: fileName });
 
-        // Save the PowerPoint
-        pptx.writeFile({
-          fileName: fileName
-        });
-
+      }).catch(err => {
+        console.error('PPTX generation error:', err);
+        alert('Failed to generate PowerPoint. Please try again.');
       }).finally(() => {
-        canvasLayer.style.transform = originalTransform;
         document.body.classList.remove('exporting');
       });
     });
