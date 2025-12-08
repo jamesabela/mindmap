@@ -54,7 +54,29 @@
       position: relative;
       width: 100vw;
       height: 100vh;
-      /* Background is now on body for the full effect */
+      overflow: hidden;
+      cursor: grab;
+      /* Default cursor indicates panning available */
+    }
+
+    #mindmap-container:active {
+      cursor: grabbing;
+    }
+
+    #canvas-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      transform-origin: 0 0;
+      pointer-events: none;
+      /* Helper to let clicks pass through to background for panning if needed, but nodes need events */
+    }
+
+    /* We need pointer events on the layer's children, but the layer itself shouldn't block */
+    #canvas-layer>* {
+      pointer-events: auto;
     }
 
     .node {
@@ -110,6 +132,7 @@
       pointer-events: none;
       width: 100%;
       height: 100%;
+      overflow: visible;
     }
 
     /* SVG Line Styling */
@@ -712,10 +735,13 @@
 </head>
 
 <body>
-  <div id="mindmap-container"><svg id="svg-connections"></svg>
-    <!-- Central Node with Placeholder -->
-    <div id="central-node" class="node central-node" contenteditable="true" tabindex="0"
-      data-placeholder="Central topic"></div>
+  <div id="mindmap-container">
+    <div id="canvas-layer">
+      <svg id="svg-connections"></svg>
+      <!-- Central Node with Placeholder -->
+      <div id="central-node" class="node central-node" contenteditable="true" tabindex="0"
+        data-placeholder="Central topic"></div>
+    </div>
     <div id="toolbar-dock">
       <!-- Main Actions -->
       <div class="toolbar-panel" id="main-actions"><button id="mode-toggle-btn" class="main-button move-mode"
@@ -833,7 +859,8 @@
       </div>
     </div>
   </div>
-  <script>const container = document.getElementById('mindmap-container');
+  <script>    const container = document.getElementById('mindmap-container');
+    const canvasLayer = document.getElementById('canvas-layer');
     const svg = document.getElementById('svg-connections');
     const centralNode = document.getElementById('central-node');
     const documentTitle = document.getElementById('document-title');
@@ -862,11 +889,54 @@
     let selectedNodeId = null;
     let siblingAngle = 0; // Angle to track placement for sibling nodes
 
-    let parentChildAngles = {}
-      ; // Track next angle for each parent's children
+    let parentChildAngles = {}; // Track next angle for each parent's children
     let urlStorageEnabled = true; // Toggle for URL storage
     let isInitialized = false; // Prevent URL updates before initial load
     let interactionMode = 'move'; // 'move' or 'edit' - for iPad usability
+
+    // Panning State
+    let panX = 0;
+    let panY = 0;
+    let isPanning = false;
+    let panStartX = 0;
+    let panStartY = 0;
+
+    function updateCanvasTransform() {
+      if (canvasLayer) {
+        // Use 3D transform for hardware acceleration
+        canvasLayer.style.transform = `translate3d(${panX}px, ${panY}px, 0)`;
+      }
+    }
+
+    // Initialize Panning Listeners
+    container.addEventListener('mousedown', (e) => {
+      // Only start panning if clicking on background or canvas layer directly
+      // And avoid panning if clicking buttons/inputs
+      if (e.target === container || e.target === canvasLayer || e.target === svg || e.target.tagName === 'svg') {
+        isPanning = true;
+        panStartX = e.clientX - panX;
+        panStartY = e.clientY - panY;
+        container.style.cursor = 'grabbing';
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isPanning) {
+        e.preventDefault();
+        panX = e.clientX - panStartX;
+        panY = e.clientY - panStartY;
+        updateCanvasTransform();
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isPanning) {
+        isPanning = false;
+        container.style.cursor = 'grab';
+      }
+    });
+
+    // Mouse wheel to pan? (Optional, maybe for another time. Standard is drag)
 
     function generateId() {
       return 'node-' + Math.random().toString(36).substr(2, 9);
@@ -935,12 +1005,12 @@
 
     function renderMindMap() {
       console.log('renderMindMap called, nodesData:', nodesData);
-      const existingNodes = container.querySelectorAll('.node');
+      // Clear dynamic nodes from canvasLayer (preserve central node and svg)
+      const existingNodes = canvasLayer.querySelectorAll('.node');
 
       existingNodes.forEach(node => {
         if (node.id !== 'central-node') {
-          // Preserve the central node
-          container.removeChild(node);
+          canvasLayer.removeChild(node);
         }
       });
 
@@ -976,7 +1046,7 @@
         renderNodeContent(nodeDiv, node, false);
 
         addEventListenersToNode(nodeDiv, node.id);
-        container.appendChild(nodeDiv);
+        canvasLayer.appendChild(nodeDiv);
       });
 
       drawConnections();
@@ -984,6 +1054,7 @@
       updateDocumentTitle();
       updateURL();
       updateModeUI(); // Apply current mode to all nodes
+      updateCanvasTransform();
     }
 
     function addEventListenersToNode(nodeDiv, nodeId) {
@@ -1381,12 +1452,16 @@
       const clientX = event.clientX || (event.touches && event.touches[0].clientX);
       const clientY = event.clientY || (event.touches && event.touches[0].clientY);
 
-      let newX = clientX - containerRect.left - dragOffsetX;
-      let newY = clientY - containerRect.top - dragOffsetY;
+      // Calculate new position relative to container, then subtract pan offset
+      let newX = clientX - containerRect.left - dragOffsetX - panX;
+      let newY = clientY - containerRect.top - dragOffsetY - panY;
 
-      // Constrain X and Y to the bounds of the container
-      newX = Math.max(0, Math.min(newX, containerRect.width - 100)); // Ensure node stays within the width of the container
-      newY = Math.max(100, Math.min(newY, containerRect.height - 100)); // Ensure node stays within the height of the container, but not too high (e.g., 50px from the top)
+      // Removed strict bounds to allow infinite canvas
+      // But let's keep a tiny safety buffer so you can't lose it entirely? 
+      // Actually, infinite needs no bounds. 
+      // Maybe just prevent negative coords if we want top-left to be origin, 
+      // but for true infinite, negative coords are fine if handled correctly.
+      // For now, let's allow negative coords to support expanding left/top.
 
       const node = nodesData.find(n => n.id === currentDraggedNodeId);
 
