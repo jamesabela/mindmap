@@ -1601,6 +1601,8 @@
     }
 
     function drawConnections() {
+      // Reverting to original simple logic for screen display consistency
+      // The heavy lifting for large maps is now done in the export function
       svg.innerHTML = '';
 
       nodesData.forEach(node => {
@@ -1616,11 +1618,12 @@
 
     function drawLine(parent, child) {
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', parent.x + 50); // Adjust based on node width
-      line.setAttribute('y1', parent.y + 30); // Adjust based on node height
-      line.setAttribute('x2', child.x + 50); // Adjust based on node width
-      line.setAttribute('y2', child.y + 30); // Adjust based on node height
-      line.setAttribute('stroke', 'black');
+      // Original offsets that worked well for the screen
+      line.setAttribute('x1', parent.x + 50);
+      line.setAttribute('y1', parent.y + 30);
+      line.setAttribute('x2', child.x + 50);
+      line.setAttribute('y2', child.y + 30);
+      line.setAttribute('stroke', 'rgba(0, 0, 0, 0.4)');
       line.setAttribute('stroke-width', '2');
       svg.appendChild(line);
     }
@@ -2218,48 +2221,120 @@
     exportPngBtn.addEventListener('click', function () {
       document.body.classList.add('exporting');
 
-      // Calculate bounds of strict content
+      // 1. Calculate Bounds
       const bounds = getMindMapBounds();
-      const padding = 50;
+      const padding = 100;
       const width = bounds.maxX - bounds.minX + (padding * 2);
       const height = bounds.maxY - bounds.minY + (padding * 2);
 
-      // Save current transform
-      const originalTransform = canvasLayer.style.transform;
+      // Warn if dimensions are potentially unsafe for canvas
+      if (width > 16000 || height > 16000) {
+        if (!confirm('This mind map is very large and might fail to export. Try creating it anyway?')) {
+          document.body.classList.remove('exporting');
+          return;
+        }
+      }
 
-      // Temporarily center the content for export
-      // We shift the layer so the top-left content is at (padding, padding)
-      canvasLayer.style.transform = `translate3d(${-bounds.minX + padding}px, ${-bounds.minY + padding}px, 0)`;
+      // 2. Create Temporary Container
+      const exportContainer = document.createElement('div');
+      exportContainer.style.position = 'absolute'; // Changed from fixed to absolute to avoid viewport issues
+      exportContainer.style.top = '0';
+      exportContainer.style.left = '0';
+      // Use Z-index to hide behind main content instead of translating off-screen
+      // Translating off-screen prevents the browser from painting, resulting in blank images
+      exportContainer.style.zIndex = '-9999';
+      exportContainer.style.width = width + 'px';
+      exportContainer.style.height = height + 'px';
+      exportContainer.style.backgroundColor = 'white';
+      // Ensure visibility is 'visible' for capture, but hidden by z-index
+      exportContainer.style.visibility = 'visible';
 
-      html2canvas(document.querySelector('#mindmap-container'), {
-        scale: 2,
-        backgroundColor: null,
-        useCORS: true,
-        width: width,   // Set explicit dimensions to capture everything
-        height: height,
-        windowWidth: width,
-        windowHeight: height,
-        x: 0,
-        y: 0,
-        scrollX: 0,
-        scrollY: 0
-      }).then(canvas => {
-        const imgData = canvas.toDataURL('image/png');
-        const link = document.createElement('a');
-        const centralNodeText = nodesData.find(n => n.id === centralNodeId)?.text || 'MindMap';
-        const fileName = `${centralNodeText.replace(/\s+/g, '_') || 'MindMap'}.png`;
-        link.href = imgData;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }).catch(err => {
-        console.error('PNG export error:', err);
-        alert('Error creating PNG. Please try again.');
-      }).finally(() => {
-        // Restore state
-        canvasLayer.style.transform = originalTransform;
-        document.body.classList.remove('exporting');
+      document.body.appendChild(exportContainer);
+
+      // We need to shift everything by (-minX + padding, -minY + padding)
+      const offsetX = -bounds.minX + padding;
+      const offsetY = -bounds.minY + padding;
+
+      // 3. Create SVG for lines
+      const exportSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      exportSvg.setAttribute('width', width);
+      exportSvg.setAttribute('height', height);
+      exportSvg.style.position = 'absolute';
+      exportSvg.style.top = '0';
+      exportSvg.style.left = '0';
+      exportSvg.style.pointerEvents = 'none';
+      exportContainer.appendChild(exportSvg);
+
+      // Draw lines
+      nodesData.forEach(node => {
+        if (node.parentId) {
+          const parent = nodesData.find(n => n.id === node.parentId);
+          if (parent) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            // Use same offset logic as original drawLine (+50, +30)
+            line.setAttribute('x1', parent.x + 50 + offsetX);
+            line.setAttribute('y1', parent.y + 30 + offsetY);
+            line.setAttribute('x2', node.x + 50 + offsetX);
+            line.setAttribute('y2', node.y + 30 + offsetY);
+            line.setAttribute('stroke', 'rgba(0, 0, 0, 0.4)');
+            line.setAttribute('stroke-width', '2');
+            exportSvg.appendChild(line);
+          }
+        }
+      });
+
+      // 4. Render Nodes
+      nodesData.forEach(node => {
+        const nodeEl = document.createElement('div');
+        nodeEl.className = 'node';
+        if (node.id === 'central-node') nodeEl.classList.add('central-node');
+
+        nodeEl.style.position = 'absolute';
+        nodeEl.style.left = (node.x + offsetX) + 'px';
+        nodeEl.style.top = (node.y + offsetY) + 'px';
+        nodeEl.style.backgroundColor = node.color;
+
+        // Remove transitions for static capture
+        nodeEl.style.transition = 'none';
+        nodeEl.style.boxShadow = 'none'; // Optional: remove shadow for cleaner print? Or keep.
+        // Let's keep shadow for look, but ensure border is standard.
+        nodeEl.style.border = '1px solid rgba(0,0,0,0.1)';
+
+        // Reuse our helper to render inner content (text, images, links)
+        // Pass 'false' for editMode
+        renderNodeContent(nodeEl, node, false);
+
+        exportContainer.appendChild(nodeEl);
+      });
+
+      // 5. Capture with html2canvas (with delay)
+      // Small delay to allow the DOM to render/paint the new elements
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          html2canvas(exportContainer, {
+            scale: 2,
+            backgroundColor: '#ffffff',
+            width: width,
+            height: height,
+            logging: false
+          }).then(canvas => {
+            const imgData = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            const centralNodeText = nodesData.find(n => n.id === centralNodeId)?.text || 'MindMap';
+            const fileName = `${centralNodeText.replace(/\s+/g, '_') || 'MindMap'}.png`;
+            link.href = imgData;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }).catch(err => {
+            console.error('PNG export error:', err);
+            alert('Error creating PNG. Please try again.');
+          }).finally(() => {
+            document.body.removeChild(exportContainer);
+            document.body.classList.remove('exporting');
+          });
+        }, 100); // 100ms delay
       });
     });
 
