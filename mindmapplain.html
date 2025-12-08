@@ -155,7 +155,8 @@
       align-items: center;
       width: auto;
       max-width: 98%;
-      flex-wrap: nowrap;
+      flex-wrap: wrap;
+      /* Allow wrapping for responsiveness */
       justify-content: center;
       pointer-events: none;
       background: var(--toolbar-bg);
@@ -784,7 +785,8 @@
           class="main-button hide-tablet" onclick="document.getElementById('upload-json').click()"
           title="Open JSON">📂</button><input type="file" id="upload-json" /><button id="download-json-btn"
           class="main-button" title="Save JSON">💾</button><button id="export-png-btn" class="main-button hide-tablet"
-          title="Export PNG">🖼️</button><button id="export-pptx-btn" class="main-button hide-tablet"
+          title="Export PNG">🖼️</button><button id="export-svg-btn" class="main-button hide-tablet"
+          title="Export SVG">✏️</button><button id="export-pptx-btn" class="main-button hide-tablet"
           title="Export PPTX">📊</button><button id="help-btn" class="main-button" title="Help">❓</button>
         <div class="attribution hide-tablet" style="margin-left: 8px;"><a
             href="https://creativecommons.org/licenses/by-nc-sa/4.0/?ref=chooser-v1" target="_blank"
@@ -872,6 +874,7 @@
     const addNodeBtn = document.getElementById('add-node-btn');
     const addChildBtn = document.getElementById('add-child-btn');
     const exportPngBtn = document.getElementById('export-png-btn');
+    const exportSvgBtn = document.getElementById('export-svg-btn');
     const buttonContainer = document.getElementById('toolbar-dock');
     const colorPalette = document.getElementById('color-palette');
     const emojiButtons = document.querySelectorAll('.emoji-btn');
@@ -2729,6 +2732,113 @@
       }).finally(() => {
         document.body.classList.remove('exporting');
       });
+    });
+
+
+    // Export SVG
+    exportSvgBtn.addEventListener('click', function () {
+      // 1. Calculate Bounds
+      const bounds = getMindMapBounds();
+      const padding = 50;
+      const width = bounds.maxX - bounds.minX + (padding * 2);
+      const height = bounds.maxY - bounds.minY + (padding * 2);
+      const minX = bounds.minX - padding;
+      const minY = bounds.minY - padding;
+
+      // 2. Build SVG String
+      let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${minX} ${minY} ${width} ${height}">`;
+
+      // Add embedded CSS for standalone viewing
+      svgContent += `
+        <style>
+          .node {
+            box-sizing: border-box;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: sans-serif;
+            font-size: 16px;
+            font-weight: 500;
+            color: #333;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            white-space: pre-wrap;
+            text-align: center;
+            overflow: hidden;
+            flex-direction: column;
+          }
+          .central-node {
+            font-size: 24px;
+            font-weight: 700;
+            background: #ffffff;
+            border: 2px solid rgba(0,0,0,0.1);
+          }
+           .node-md-image {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin-bottom: 4px;
+            border-radius: 4px;
+          }
+          a { color: inherit; text-decoration: none; }
+        </style>`;
+
+      // 3. Add Connections
+      nodesData.forEach(node => {
+        if (node.parentId) {
+          const parent = nodesData.find(n => n.id === node.parentId);
+          if (parent) {
+            const x1 = parent.x + 50;
+            const y1 = parent.y + 30;
+            const x2 = node.x + 50;
+            const y2 = node.y + 30;
+            svgContent += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(0,0,0,0.4)" stroke-width="2" />`;
+          }
+        }
+      });
+
+      // 4. Add Nodes via foreignObject
+      nodesData.forEach(node => {
+        // Retrieve live dimensions to ensure perfect match
+        const el = document.getElementById(node.id);
+        const w = el ? el.offsetWidth : 150;
+        const h = el ? el.offsetHeight : 60;
+        const bgColor = node.color || '#ffffff';
+
+        let innerHTML = '';
+        if (node.image) {
+          innerHTML += `<img src="${node.image}" class="node-md-image" style="width:${node.imageSize || 150}px">`;
+        }
+        innerHTML += `<span>${(node.text || '').replace(/</g, '&lt;')}</span>`;
+        if (node.link) {
+          innerHTML += `<span style="margin-left:4px">🔗</span>`;
+        }
+
+        const isCentral = node.id === 'central-node';
+        const cssClass = isCentral ? 'node central-node' : 'node';
+
+        svgContent += `
+             <foreignObject x="${node.x}" y="${node.y}" width="${w}" height="${h}">
+               <div xmlns="http://www.w3.org/1999/xhtml" class="${cssClass}" style="background-color: ${bgColor}; width: ${w}px; height: ${h}px;">
+                 ${innerHTML}
+               </div>
+             </foreignObject>`;
+      });
+
+      svgContent += '</svg>';
+
+      // Download
+      const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const centralNodeText = nodesData.find(n => n.id === centralNodeId)?.text || 'MindMap';
+      link.download = `${centralNodeText.replace(/\s+/g, '_') || 'MindMap'}.svg`;
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     });
 
     // Link/Image Modal Logic
