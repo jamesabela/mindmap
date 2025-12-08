@@ -936,6 +936,32 @@
       }
     });
 
+    // Touch Support for iPad/Mobile Panning
+    container.addEventListener('touchstart', (e) => {
+      if (e.target === container || e.target === canvasLayer || e.target === svg || e.target.tagName === 'svg') {
+        const touch = e.touches[0];
+        isPanning = true;
+        panStartX = touch.clientX - panX;
+        panStartY = touch.clientY - panY;
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (isPanning) {
+        e.preventDefault(); // Prevent native scrolling
+        const touch = e.touches[0];
+        panX = touch.clientX - panStartX;
+        panY = touch.clientY - panStartY;
+        updateCanvasTransform();
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchend', () => {
+      if (isPanning) {
+        isPanning = false;
+      }
+    });
+
     // Mouse wheel to pan? (Optional, maybe for another time. Standard is drag)
 
     function generateId() {
@@ -2192,10 +2218,31 @@
     exportPngBtn.addEventListener('click', function () {
       document.body.classList.add('exporting');
 
-      html2canvas(container, {
+      // Calculate bounds of strict content
+      const bounds = getMindMapBounds();
+      const padding = 50;
+      const width = bounds.maxX - bounds.minX + (padding * 2);
+      const height = bounds.maxY - bounds.minY + (padding * 2);
+
+      // Save current transform
+      const originalTransform = canvasLayer.style.transform;
+
+      // Temporarily center the content for export
+      // We shift the layer so the top-left content is at (padding, padding)
+      canvasLayer.style.transform = `translate3d(${-bounds.minX + padding}px, ${-bounds.minY + padding}px, 0)`;
+
+      html2canvas(document.querySelector('#mindmap-container'), {
         scale: 2,
         backgroundColor: null,
-        useCORS: true
+        useCORS: true,
+        width: width,   // Set explicit dimensions to capture everything
+        height: height,
+        windowWidth: width,
+        windowHeight: height,
+        x: 0,
+        y: 0,
+        scrollX: 0,
+        scrollY: 0
       }).then(canvas => {
         const imgData = canvas.toDataURL('image/png');
         const link = document.createElement('a');
@@ -2208,11 +2255,35 @@
         document.body.removeChild(link);
       }).catch(err => {
         console.error('PNG export error:', err);
-        alert('Error creating PNG. If you have images, please use the file upload button (not URL) to ensure they export correctly.');
+        alert('Error creating PNG. Please try again.');
       }).finally(() => {
+        // Restore state
+        canvasLayer.style.transform = originalTransform;
         document.body.classList.remove('exporting');
       });
     });
+
+    function getMindMapBounds() {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+      if (nodesData.length === 0) return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+
+      // Consider all nodes
+      nodesData.forEach(node => {
+        // Get rough dimensions - visual element would be better but data is safer/faster
+        // Assuming ~150px width and ~60px height for safety if not measured
+        const el = document.getElementById(node.id);
+        const w = el ? el.offsetWidth : 150;
+        const h = el ? el.offsetHeight : 60;
+
+        minX = Math.min(minX, node.x);
+        maxX = Math.max(maxX, node.x + w);
+        minY = Math.min(minY, node.y);
+        maxY = Math.max(maxY, node.y + h);
+      });
+
+      return { minX, maxX, minY, maxY };
+    }
 
     // Download JSON with proper Unicode/emoji support
     function downloadJSON() {
@@ -2502,10 +2573,26 @@
       // Hide toolbar for the export
       document.body.classList.add('exporting');
 
-      html2canvas(container, {
+      // Calculate bounds for PPTX export too
+      const bounds = getMindMapBounds();
+      const padding = 50;
+      const width = bounds.maxX - bounds.minX + (padding * 2);
+      const height = bounds.maxY - bounds.minY + (padding * 2);
+      const originalTransform = canvasLayer.style.transform;
+
+      // Shift to show all content
+      canvasLayer.style.transform = `translate3d(${-bounds.minX + padding}px, ${-bounds.minY + padding}px, 0)`;
+
+      html2canvas(document.querySelector('#mindmap-container'), {
         scale: 2,
         backgroundColor: null,
-        useCORS: true
+        useCORS: true,
+        width: width,
+        height: height,
+        windowWidth: width,
+        windowHeight: height,
+        scrollX: 0,
+        scrollY: 0
       }).then(canvas => {
         const imgData = canvas.toDataURL('image/png');
 
@@ -2559,6 +2646,7 @@
         });
 
       }).finally(() => {
+        canvasLayer.style.transform = originalTransform;
         document.body.classList.remove('exporting');
       });
     });
