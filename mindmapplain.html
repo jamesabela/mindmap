@@ -1462,7 +1462,7 @@
         // Add both mouse and touch event listeners
         document.addEventListener('mousemove', dragNode);
         document.addEventListener('mouseup', stopDrag);
-        document.addEventListener('touchmove', dragNode);
+        document.addEventListener('touchmove', dragNode, { passive: false });
         document.addEventListener('touchend', stopDrag);
       }
     }
