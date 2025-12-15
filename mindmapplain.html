@@ -145,7 +145,7 @@
 
     /* Toolbar Styling */
     #toolbar-dock {
-      position: absolute;
+      position: fixed;
       top: 10px;
       top: calc(var(--safe-area-top) + 10px);
       left: 50%;
@@ -877,7 +877,6 @@
     const addChildBtn = document.getElementById('add-child-btn');
     const exportPngBtn = document.getElementById('export-png-btn');
     const exportSvgBtn = document.getElementById('export-svg-btn');
-    const buttonContainer = document.getElementById('toolbar-dock');
     const colorPalette = document.getElementById('color-palette');
     const emojiButtons = document.querySelectorAll('.emoji-btn');
 
