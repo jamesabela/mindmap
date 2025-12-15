@@ -39,6 +39,7 @@
       --primary-color: #4a90e2;
       --text-color: #333;
       --toolbar-bg: rgba(255, 255, 255, 0.95);
+      --safe-area-top: env(safe-area-inset-top, 0px);
     }
 
     body {
@@ -146,6 +147,7 @@
     #toolbar-dock {
       position: absolute;
       top: 10px;
+      top: calc(var(--safe-area-top) + 10px);
       left: 50%;
       transform: translateX(-50%);
       display: flex;
@@ -1099,7 +1101,7 @@
         // On touch devices, only allow dragging in move mode
         const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
         if (interactionMode === 'move' || !isTouchDevice) {
-          startDrag(e);
+          startDrag(e, nodeId);
         }
       });
 
@@ -1107,7 +1109,7 @@
       nodeDiv.addEventListener('touchstart', (e) => {
         // Only allow dragging in move mode on touch devices
         if (interactionMode === 'move') {
-          startDrag(e);
+          startDrag(e, nodeId);
         }
       });
 
@@ -1442,29 +1444,37 @@
     let dragOffsetY = 0;
     let currentDropTarget = null;
 
-    function startDrag(event) {
-      if (event.target.classList.contains('node')) {
-        isDraggingFlag = true;
-        currentDraggedNodeId = event.target.id;
-        const nodeRect = event.target.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
+    function startDrag(event, nodeId = null) {
+      const nodeElement = nodeId
+        ? document.getElementById(nodeId)
+        : (event.currentTarget && event.currentTarget.classList && event.currentTarget.classList.contains('node'))
+          ? event.currentTarget
+          : (event.target.closest ? event.target.closest('.node') : null);
 
-        // Handle both mouse and touch events
-        const clientX = event.clientX || (event.touches && event.touches[0].clientX);
-        const clientY = event.clientY || (event.touches && event.touches[0].clientY);
-
-        dragOffsetX = clientX - nodeRect.left;
-        dragOffsetY = clientY - nodeRect.top;
-
-        // Add visual feedback for dragging
-        event.target.classList.add('dragging');
-
-        // Add both mouse and touch event listeners
-        document.addEventListener('mousemove', dragNode);
-        document.addEventListener('mouseup', stopDrag);
-        document.addEventListener('touchmove', dragNode, { passive: false });
-        document.addEventListener('touchend', stopDrag);
+      if (!nodeElement) {
+        return;
       }
+
+      isDraggingFlag = true;
+      currentDraggedNodeId = nodeId || nodeElement.id;
+      const nodeRect = nodeElement.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+
+      // Handle both mouse and touch events
+      const clientX = event.clientX || (event.touches && event.touches[0].clientX);
+      const clientY = event.clientY || (event.touches && event.touches[0].clientY);
+
+      dragOffsetX = clientX - nodeRect.left;
+      dragOffsetY = clientY - nodeRect.top;
+
+      // Add visual feedback for dragging
+      nodeElement.classList.add('dragging');
+
+      // Add both mouse and touch event listeners
+      document.addEventListener('mousemove', dragNode);
+      document.addEventListener('mouseup', stopDrag);
+      document.addEventListener('touchmove', dragNode, { passive: false });
+      document.addEventListener('touchend', stopDrag);
     }
 
     function dragNode(event) {
@@ -1497,7 +1507,14 @@
       if (node) {
         node.x = newX;
         node.y = newY;
-        renderMindMap();
+
+        const nodeElement = document.getElementById(node.id);
+        if (nodeElement) {
+          nodeElement.style.left = `${newX}px`;
+          nodeElement.style.top = `${newY}px`;
+        }
+
+        drawConnections();
       }
 
       // Check if we're hovering over another node (potential drop target)
