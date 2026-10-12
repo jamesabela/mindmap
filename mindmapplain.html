@@ -57,6 +57,7 @@
       height: 100vh;
       overflow: hidden;
       cursor: grab;
+      touch-action: pinch-zoom;
       /* Default cursor indicates panning available */
     }
 
@@ -80,17 +81,19 @@
       pointer-events: auto;
     }
 
+    #canvas-layer > #svg-connections {
+      pointer-events: none;
+    }
+
     .node {
       position: absolute;
       padding: 12px 20px;
       background: var(--glass-bg);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
       border: 1px solid var(--glass-border);
       border-radius: 12px;
       cursor: pointer;
       user-select: none;
-      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      transition: box-shadow 160ms ease, border-color 160ms ease, background-color 160ms ease;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -104,10 +107,10 @@
       color: #333;
     }
 
-    .node:hover {
-      transform: translateY(-2px);
-      box-shadow: var(--node-hover-shadow);
-      background: rgba(255, 255, 255, 0.85);
+    @media (hover: hover) and (pointer: fine) {
+      .node:hover {
+        box-shadow: var(--node-hover-shadow);
+      }
     }
 
     .node:focus {
@@ -637,6 +640,7 @@
     /* Visual feedback for modes */
     body.move-mode .node {
       cursor: move;
+      touch-action: none;
     }
 
     body.edit-mode .node {
@@ -647,16 +651,66 @@
       cursor: move !important;
     }
 
-    /* Drop target highlighting */
+    .node.is-selected {
+      border-color: #10b981;
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+    }
+
+    .node.is-selected.has-attachment {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+    }
+
+    /* Outlines do not resize a drop target or move its connectors. */
     .node.drop-target {
-      border: 3px dashed #10b981 !important;
-      background: rgba(16, 185, 129, 0.1) !important;
-      box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2) !important;
+      outline: 3px solid #10b981;
+      outline-offset: 5px;
+      box-shadow: 0 0 0 7px rgba(16, 185, 129, 0.12) !important;
     }
 
     .node.dragging {
-      opacity: 0.5;
+      z-index: 20;
       cursor: grabbing !important;
+      border-color: #60a5fa !important;
+      box-shadow: 0 16px 36px rgba(30, 64, 100, 0.2), 0 3px 8px rgba(30, 64, 100, 0.12) !important;
+      transition: none;
+      will-change: transform;
+    }
+
+    /* One small frosted halo, with crisp text and an inexpensive shadow fallback. */
+    .node.dragging::before {
+      content: '';
+      position: absolute;
+      inset: -7px;
+      border-radius: 18px;
+      background: rgba(219, 234, 254, 0.2);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .node.dragging, .node.dragging * {
+      pointer-events: none !important;
+    }
+
+    #canvas-layer.is-dragging {
+      cursor: grabbing;
+    }
+
+    #svg-connections line.connection-active {
+      stroke: #60a5fa;
+      stroke-width: 2.5px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .node, #svg-connections line {
+        transition: none;
+      }
+      .node.dragging::before {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
     }
 
     /* Responsive toolbar for iPad */
@@ -891,12 +945,56 @@
     let undoStack = [];
     let redoStack = [];
     let selectedNodeId = null;
-    let siblingAngle = 0; // Angle to track placement for sibling nodes
-
-    let parentChildAngles = {}; // Track next angle for each parent's children
     let urlStorageEnabled = true; // Toggle for URL storage
     let isInitialized = false; // Prevent URL updates before initial load
     let interactionMode = 'move'; // 'move' or 'edit' - for iPad usability
+
+    // Retain DOM elements and index the graph. A drag only touches one card and
+    // its incident edges; replacing the model on undo/import rebuilds the index.
+    const nodeElements = new Map();
+    const nodesById = new Map();
+    const childrenByParent = new Map();
+    const nodeSizes = new Map();
+    const connectionElements = new Map();
+    const nodeContentState = new WeakMap();
+    const dirtyConnections = new Set();
+    let connectionFrame = null;
+    let highlightedNodeId = null;
+
+    function rebuildNodeIndex() {
+      nodesById.clear();
+      childrenByParent.clear();
+      nodesData.forEach(node => {
+        nodesById.set(node.id, node);
+        if (!childrenByParent.has(node.parentId)) childrenByParent.set(node.parentId, new Set());
+        childrenByParent.get(node.parentId).add(node.id);
+      });
+    }
+
+    function contentKey(node) {
+      return JSON.stringify([node.text, node.image, node.imageSize, node.link]);
+    }
+
+    function refreshNodeGeometry(nodeId) {
+      const node = nodesById.get(nodeId);
+      const element = nodeElements.get(nodeId);
+      if (!node || !element) return false;
+      const width = element.offsetWidth;
+      const height = element.offsetHeight;
+      const previous = nodeSizes.get(nodeId);
+      const moved = syncNodePlacement(node, element, width);
+      nodeSizes.set(nodeId, { width, height });
+      if (moved || !previous || width !== previous.width || height !== previous.height) {
+        queueNodeConnections(nodeId);
+      }
+      return moved;
+    }
+
+    const nodeResizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => {
+      let moved = false;
+      entries.forEach(entry => { moved = refreshNodeGeometry(entry.target.id) || moved; });
+      if (moved) updateURL();
+    }) : null;
 
     // Panning State
     let panX = 0;
@@ -912,61 +1010,77 @@
       }
     }
 
-    // Initialize Panning Listeners
-    container.addEventListener('mousedown', (e) => {
-      // Only start panning if clicking on background or canvas layer directly
-      // And avoid panning if clicking buttons/inputs
-      if (e.target === container || e.target === canvasLayer || e.target === svg || e.target.tagName === 'svg') {
-        isPanning = true;
-        panStartX = e.clientX - panX;
-        panStartY = e.clientY - panY;
-        container.style.cursor = 'grabbing';
-      }
-    });
+    let panFrame = null;
+    let panPointerId = null;
+    let panTouchId = null;
+    let pendingPanPoint = null;
 
-    window.addEventListener('mousemove', (e) => {
-      if (isPanning) {
-        e.preventDefault();
-        panX = e.clientX - panStartX;
-        panY = e.clientY - panStartY;
-        updateCanvasTransform();
-      }
-    });
+    function beginPan(event) {
+      if (dragSession || isPanning || event.isPrimary === false || (event.button !== undefined && event.button !== 0)) return;
+      if (event.target !== container && event.target !== canvasLayer && event.target !== svg) return;
+      if (event.touches && event.touches.length !== 1) return;
+      const point = eventPoint(event);
+      if (!point) return;
+      isPanning = true;
+      panStartX = point.clientX - panX;
+      panStartY = point.clientY - panY;
+      panPointerId = event.pointerId === undefined ? null : event.pointerId;
+      panTouchId = point.identifier === undefined ? null : point.identifier;
+      container.style.cursor = 'grabbing';
+      if (panPointerId !== null) container.setPointerCapture(panPointerId);
+    }
 
-    window.addEventListener('mouseup', () => {
-      if (isPanning) {
-        isPanning = false;
-        container.style.cursor = 'grab';
-      }
-    });
+    function paintPan() {
+      if (panFrame !== null) cancelAnimationFrame(panFrame);
+      panFrame = null;
+      if (!pendingPanPoint) return;
+      panX = pendingPanPoint.clientX - panStartX;
+      panY = pendingPanPoint.clientY - panStartY;
+      pendingPanPoint = null;
+      updateCanvasTransform();
+    }
 
-    // Touch Support for iPad/Mobile Panning
-    container.addEventListener('touchstart', (e) => {
-      if (e.target === container || e.target === canvasLayer || e.target === svg || e.target.tagName === 'svg') {
-        const touch = e.touches[0];
-        isPanning = true;
-        panStartX = touch.clientX - panX;
-        panStartY = touch.clientY - panY;
-      }
-    }, { passive: false });
+    function movePan(event) {
+      if (!isPanning || (event.pointerId !== undefined && event.pointerId !== panPointerId)) return;
+      if (event.touches && event.touches.length > 1) { stopPan(); return; }
+      const point = eventPoint(event, panTouchId);
+      if (!point) return;
+      if (event.cancelable) event.preventDefault();
+      pendingPanPoint = { clientX: point.clientX, clientY: point.clientY };
+      if (panFrame === null) panFrame = requestAnimationFrame(paintPan);
+    }
 
-    window.addEventListener('touchmove', (e) => {
-      if (isPanning) {
-        e.preventDefault(); // Prevent native scrolling
-        const touch = e.touches[0];
-        panX = touch.clientX - panStartX;
-        panY = touch.clientY - panStartY;
-        updateCanvasTransform();
+    function stopPan(event) {
+      if (!isPanning || (event && event.pointerId !== undefined && event.pointerId !== panPointerId)) return;
+      if (event && ['pointerup', 'mouseup', 'touchend'].includes(event.type)) {
+        const point = eventPoint(event, panTouchId);
+        if (point) pendingPanPoint = { clientX: point.clientX, clientY: point.clientY };
       }
-    }, { passive: false });
+      paintPan();
+      isPanning = false;
+      container.style.cursor = '';
+      const pointerId = panPointerId;
+      panPointerId = null;
+      panTouchId = null;
+      if (pointerId !== null && container.hasPointerCapture(pointerId)) container.releasePointerCapture(pointerId);
+    }
 
-    window.addEventListener('touchend', () => {
-      if (isPanning) {
-        isPanning = false;
-      }
-    });
-
-    // Mouse wheel to pan? (Optional, maybe for another time. Standard is drag)
+    if (window.PointerEvent) {
+      container.addEventListener('pointerdown', beginPan);
+      window.addEventListener('pointermove', movePan, { passive: false });
+      window.addEventListener('pointerup', stopPan);
+      window.addEventListener('pointercancel', stopPan);
+      container.addEventListener('lostpointercapture', stopPan);
+    } else {
+      container.addEventListener('mousedown', beginPan);
+      container.addEventListener('touchstart', beginPan, { passive: false });
+      window.addEventListener('mousemove', movePan);
+      window.addEventListener('touchmove', movePan, { passive: false });
+      window.addEventListener('mouseup', stopPan);
+      window.addEventListener('touchend', stopPan);
+      window.addEventListener('touchcancel', stopPan);
+    }
+    window.addEventListener('blur', () => stopPan());
 
     function generateId() {
       return 'node-' + Math.random().toString(36).substr(2, 9);
@@ -999,6 +1113,8 @@
 
     // Mode Toggle Functions for iPad usability
     function toggleMode() {
+      cancelDrag();
+      stopPan();
       interactionMode = interactionMode === 'move' ? 'edit' : 'move';
       updateModeUI();
       localStorage.setItem('mindmap-interaction-mode', interactionMode);
@@ -1017,7 +1133,7 @@
 
         // Enable contenteditable
         allNodes.forEach(node => {
-          node.contentEditable = 'true';
+          if (node.contentEditable !== 'true') node.contentEditable = 'true';
         });
       } else {
         // Move Mode
@@ -1028,57 +1144,49 @@
 
         // Disable contenteditable
         allNodes.forEach(node => {
-          node.contentEditable = 'false';
+          if (node.contentEditable !== 'false') node.contentEditable = 'false';
         });
       }
     }
 
     function renderMindMap() {
-      console.log('renderMindMap called, nodesData:', nodesData);
-      // Clear dynamic nodes from canvasLayer (preserve central node and svg)
-      const existingNodes = canvasLayer.querySelectorAll('.node');
-
-      existingNodes.forEach(node => {
-        if (node.id !== 'central-node') {
-          canvasLayer.removeChild(node);
+      cancelDrag();
+      rebuildNodeIndex();
+      nodeElements.forEach((element, id) => {
+        if (!nodesById.has(id)) {
+          if (nodeResizeObserver) nodeResizeObserver.unobserve(element);
+          element.remove();
+          nodeElements.delete(id);
+          nodeSizes.delete(id);
         }
       });
-
       nodesData.forEach(node => {
-        if (node.id === centralNodeId) {
-          centralNode.style.left = `${node.x}px`;
-          centralNode.style.top = `${node.y}px`;
-          centralNode.style.backgroundColor = node.color;
-
-          // Use renderNodeContent for central node too
-          renderNodeContent(centralNode, node, false);
-
-          // Attach event listeners if not already attached
-          if (!centralNode.dataset.listenersAttached) {
-            addEventListenersToNode(centralNode, node.id);
-            centralNode.dataset.listenersAttached = 'true';
-          }
-
-          return;
+        let element = nodeElements.get(node.id);
+        if (!element) {
+          element = node.id === centralNodeId ? centralNode : document.createElement('div');
+          element.classList.add('node');
+          element.id = node.id;
+          element.tabIndex = 0;
+          nodeElements.set(node.id, element);
+          addEventListenersToNode(element, node.id);
+          if (element.parentElement !== canvasLayer) canvasLayer.appendChild(element);
+          if (nodeResizeObserver) nodeResizeObserver.observe(element);
         }
-
-        const nodeDiv = document.createElement('div');
-        nodeDiv.className = 'node';
-        nodeDiv.id = node.id;
-        nodeDiv.contentEditable = true;
-        nodeDiv.tabIndex = 0;
-
-        nodeDiv.style.left = `${node.x}px`;
-        nodeDiv.style.top = `${node.y}px`;
-        nodeDiv.style.backgroundColor = node.color;
-
-        // Initial render in View Mode
-        renderNodeContent(nodeDiv, node, false);
-
-        addEventListenersToNode(nodeDiv, node.id);
-        canvasLayer.appendChild(nodeDiv);
+        if (element.style.left !== `${node.x}px`) element.style.left = `${node.x}px`;
+        if (element.style.top !== `${node.y}px`) element.style.top = `${node.y}px`;
+        if (element.dataset.color !== node.color) {
+          element.style.backgroundColor = node.color;
+          element.dataset.color = node.color;
+        }
+        element.classList.toggle('has-attachment', Boolean(node.link || node.image));
+        const editing = document.activeElement === element && interactionMode === 'edit';
+        const previous = nodeContentState.get(element);
+        if (!previous || previous.key !== contentKey(node) || previous.editing !== editing) {
+          renderNodeContent(element, node, editing);
+        }
       });
 
+      nodesData.forEach(node => refreshNodeGeometry(node.id));
       drawConnections();
       highlightSelectedNode();
       updateDocumentTitle();
@@ -1088,6 +1196,8 @@
     }
 
     function addEventListenersToNode(nodeDiv, nodeId) {
+      if (nodeDiv.dataset.listenersAttached) return;
+      nodeDiv.dataset.listenersAttached = 'true';
       nodeDiv.addEventListener('click', (e) => {
         e.stopPropagation(); // Prevent triggering container's click
         setSelectedNode(nodeId);
@@ -1095,34 +1205,36 @@
 
       nodeDiv.addEventListener('keydown', (e) => handleKeyDown(e, nodeId));
 
-      nodeDiv.addEventListener('mousedown', (e) => {
-        // On desktop (non-touch), allow dragging in both modes
-        // On touch devices, only allow dragging in move mode
-        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-        if (interactionMode === 'move' || !isTouchDevice) {
-          startDrag(e, nodeId);
-        }
-      });
-
-      // Add touch event listener for iPad/mobile
-      nodeDiv.addEventListener('touchstart', (e) => {
-        // Only allow dragging in move mode on touch devices
-        if (interactionMode === 'move') {
-          startDrag(e, nodeId);
-        }
-      });
+      const beginDrag = e => {
+        const mouse = e.pointerType === 'mouse' || e.type === 'mousedown';
+        // Native text selection stays available in the active editor.
+        if (interactionMode === 'move' || (mouse && document.activeElement !== nodeDiv)) startDrag(e, nodeId);
+      };
+      if (window.PointerEvent) {
+        nodeDiv.addEventListener('pointerdown', beginDrag);
+      } else {
+        nodeDiv.addEventListener('mousedown', beginDrag);
+        nodeDiv.addEventListener('touchstart', beginDrag, { passive: false });
+      }
+      nodeDiv.addEventListener('dragstart', e => e.preventDefault());
 
       nodeDiv.addEventListener('input', () => updateNodeText(nodeId));
 
       // Toggle between edit and view mode to prevent duplicate icons
       nodeDiv.addEventListener('focus', () => {
-        const node = nodesData.find(n => n.id === nodeId);
-        if (node) renderNodeContent(nodeDiv, node, true);
+        const node = nodesById.get(nodeId);
+        if (node && interactionMode === 'edit') {
+          renderNodeContent(nodeDiv, node, true);
+          refreshNodeGeometry(nodeId);
+        }
       });
 
       nodeDiv.addEventListener('blur', () => {
-        const node = nodesData.find(n => n.id === nodeId);
-        if (node) renderNodeContent(nodeDiv, node, false);
+        const node = nodesById.get(nodeId);
+        if (node) {
+          renderNodeContent(nodeDiv, node, false);
+          if (refreshNodeGeometry(nodeId)) updateURL();
+        }
       });
     }
 
@@ -1153,25 +1265,166 @@
     }
 
     function highlightSelectedNode() {
-      const allNodes = document.querySelectorAll('.node');
-      allNodes.forEach(nodeDiv => {
-        if (nodeDiv.id === selectedNodeId) {
-          const node = nodesData.find(n => n.id === selectedNodeId);
-          if (node) {
-            if (node.link || node.image) {
-              nodeDiv.style.borderColor = '#3b82f6'; // Blue for links/images
-              nodeDiv.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.3)';
-            } else {
-              nodeDiv.style.borderColor = '#10b981'; // Green for text only
-              nodeDiv.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.3)';
-            }
-          }
-        } else {
-          // Reset to default
-          nodeDiv.style.borderColor = '';
-          nodeDiv.style.boxShadow = '';
-        }
+      const previous = nodeElements.get(highlightedNodeId);
+      if (previous && highlightedNodeId !== selectedNodeId) previous.classList.remove('is-selected');
+      const selected = nodeElements.get(selectedNodeId);
+      if (selected) selected.classList.add('is-selected');
+      highlightedNodeId = selectedNodeId;
+    }
+
+    const NODE_GAP = 32;
+    const BRANCH_GAP = 80;
+
+    function syncNodePlacement(node, element, width = element && element.offsetWidth) {
+      if (!element || !Number.isFinite(node.placementRight)) return false;
+      const x = node.placementRight - width;
+      // Keep a left branch's inward edge fixed while its label grows outward.
+      if (element.style.left !== `${x}px`) element.style.left = `${x}px`;
+      if (node.x === x) return false;
+      node.x = x;
+      return true;
+    }
+
+    // Measure once per insertion, in map coordinates (independent of panning).
+    function getPlacementSnapshot() {
+      const byId = new Map();
+      const children = new Map();
+      nodesData.forEach(node => {
+        const element = document.getElementById(node.id);
+        const width = element ? element.offsetWidth : 120;
+        const height = element ? element.offsetHeight : 50;
+        byId.set(node.id, { ...node, width, height, right: node.x + width, bottom: node.y + height });
+        if (!children.has(node.parentId)) children.set(node.parentId, []);
+        children.get(node.parentId).push(node.id);
       });
+
+      const subtreeBounds = new Map();
+      function boundsFor(id) {
+        if (subtreeBounds.has(id)) return subtreeBounds.get(id);
+        const node = byId.get(id);
+        const bounds = { x: node.x, y: node.y, right: node.right, bottom: node.bottom };
+        // Cache before descending so a malformed imported cycle cannot recurse forever.
+        subtreeBounds.set(id, bounds);
+        (children.get(id) || []).forEach(childId => {
+          const child = boundsFor(childId);
+          bounds.x = Math.min(bounds.x, child.x);
+          bounds.y = Math.min(bounds.y, child.y);
+          bounds.right = Math.max(bounds.right, child.right);
+          bounds.bottom = Math.max(bounds.bottom, child.bottom);
+        });
+        return bounds;
+      }
+
+      function sideFor(id) {
+        let branch = byId.get(id);
+        const visited = new Set();
+        while (branch && branch.parentId && branch.parentId !== centralNodeId && !visited.has(branch.id)) {
+          visited.add(branch.id);
+          branch = byId.get(branch.parentId);
+        }
+        const root = byId.get(centralNodeId);
+        return branch && root && branch.x + branch.width / 2 < root.x + root.width / 2 ? 'left' : 'right';
+      }
+
+      return { byId, children, boundsFor, sideFor };
+    }
+
+    // Find a free vertical slot by jumping past obstacles, never by giving up
+    // after a fixed number of attempts. Every node participates in collision checks.
+    function findFreeNodeY(x, preferredY, width, height, obstacles, belowOnly) {
+      const intervals = obstacles
+        .filter(rect => x < rect.right + NODE_GAP && x + width + NODE_GAP > rect.x)
+        .map(rect => ({ start: rect.y - height - NODE_GAP, end: rect.bottom + NODE_GAP }))
+        .sort((a, b) => a.start - b.start);
+
+      let below = preferredY;
+      intervals.forEach(interval => {
+        if (below > interval.start && below < interval.end) below = interval.end;
+      });
+      if (belowOnly) return below;
+
+      let above = preferredY;
+      for (let i = intervals.length - 1; i >= 0; i--) {
+        if (above > intervals[i].start && above < intervals[i].end) above = intervals[i].start;
+      }
+      return preferredY - above < below - preferredY ? above : below;
+    }
+
+    function insertPlacedNode(parentId, siblingId = null, disconnected = false) {
+      const snapshot = getPlacementSnapshot();
+      const parent = snapshot.byId.get(parentId);
+      if (!parent) return;
+
+      // The empty editor uses the same CSS as real nodes, including touch sizing.
+      const probe = document.createElement('div');
+      probe.className = 'node';
+      probe.style.visibility = 'hidden';
+      canvasLayer.appendChild(probe);
+      const width = probe.offsetWidth;
+      const height = probe.offsetHeight;
+      probe.remove();
+
+      let side;
+      if (siblingId) {
+        side = snapshot.sideFor(siblingId);
+      } else if (parentId !== centralNodeId) {
+        side = snapshot.sideFor(parentId);
+      } else {
+        const load = { left: 0, right: 0 };
+        (snapshot.children.get(parentId) || []).forEach(id => {
+          const bounds = snapshot.boundsFor(id);
+          load[snapshot.sideFor(id)] += bounds.bottom - bounds.y + NODE_GAP;
+        });
+        side = load.right <= load.left ? 'right' : 'left';
+      }
+
+      const siblings = (snapshot.children.get(parentId) || [])
+        .filter(id => snapshot.sideFor(id) === side);
+      const gap = parentId === centralNodeId ? 100 : BRANCH_GAP;
+      const sibling = snapshot.byId.get(siblingId);
+      // Align siblings at their inward edge, even after a branch was moved by hand.
+      const x = sibling
+        ? (side === 'left' ? sibling.right - width : sibling.x)
+        : (side === 'left' ? parent.x - gap - width : parent.right + gap);
+      let preferredY = parent.y + (parent.height - height) / 2;
+      let belowOnly = false;
+      if (sibling) {
+        preferredY = snapshot.boundsFor(siblingId).bottom + NODE_GAP;
+        belowOnly = true;
+      }
+
+      const obstacles = Array.from(snapshot.byId.values());
+      // Reserve vertical room for siblings' descendants, including manually moved ones.
+      siblings.forEach(id => {
+        const bounds = snapshot.boundsFor(id);
+        obstacles.push({ ...bounds, x, right: x + width });
+      });
+      // Keep descendants out of neighbouring branches' vertical space, even
+      // when those branches do not yet reach this depth. Children can grow
+      // above or below their parent without threading through another branch.
+      let ancestor = parent;
+      const visited = new Set();
+      while (ancestor.parentId && !visited.has(ancestor.id)) {
+        visited.add(ancestor.id);
+        (snapshot.children.get(ancestor.parentId) || []).forEach(id => {
+          if (id !== ancestor.id && snapshot.sideFor(id) === side) {
+            const bounds = snapshot.boundsFor(id);
+            obstacles.push({ ...bounds, x, right: x + width });
+          }
+        });
+        ancestor = snapshot.byId.get(ancestor.parentId);
+        if (!ancestor) break;
+      }
+      const y = findFreeNodeY(x, preferredY, width, height, obstacles, belowOnly);
+      const newNode = { id: generateId(), parentId: disconnected ? null : parentId, x, y, color: colors[0], text: '' };
+      // Left branches grow away from their parent as text is entered. This optional
+      // anchor is saved with the map; dragging releases it, preserving manual placement.
+      if (side === 'left') newNode.placementRight = x + width;
+
+      pushToUndo();
+      nodesData.push(newNode);
+      renderMindMap();
+      focusNode(newNode.id);
     }
 
     function addNode(parentId) {
@@ -1179,131 +1432,19 @@
         alert('No parent node selected.');
         return;
       }
-
-      const newId = generateId();
-      const nodeDiv = document.getElementById(parentId);
-
-      // Use larger radius - 280px for central node children, 200px for others
-      const radius = parentId === centralNodeId ? 280 : 200;
-
-      const parentX = nodeDiv.offsetLeft;
-      const parentY = nodeDiv.offsetTop;
-
-      // Initialize angle tracking for this parent if not exists
-      if (!parentChildAngles[parentId]) {
-        parentChildAngles[parentId] = 0; // Start at 0 degrees (3 o'clock)
-      }
-
-      // Get existing children of this parent to find the best angle
-      const existingChildren = nodesData.filter(n => n.parentId === parentId);
-
-      // Calculate angle - distribute evenly around the parent
-      // Start at 0° (right) and increment by 45° for each child
-      let angle = parentChildAngles[parentId];
-      let attempts = 0;
-      const maxAttempts = 8; // Try up to 8 positions (every 45°)
-
-      // Find a non-overlapping position
-      while (attempts < maxAttempts) {
-        let newX = parentX + radius * Math.cos(angle * Math.PI / 180);
-        let newY = parentY + radius * Math.sin(angle * Math.PI / 180);
-
-        // Constrain the Y position
-        const containerRect = container.getBoundingClientRect();
-        newY = Math.max(100, Math.min(newY, containerRect.height - 100));
-
-        // Check if this position overlaps with existing children
-        const overlaps = existingChildren.some(child => {
-          const dx = child.x - newX;
-          const dy = child.y - newY;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          return distance < 120; // Minimum distance between nodes (increased from 80)
-        });
-
-        if (!overlaps) {
-
-          // Found a good position
-          const newNode = {
-            id: newId,
-            parentId: parentId,
-            x: newX,
-            y: newY,
-            color: colors[0],
-            text: ''
-          }
-
-            ;
-
-          // Update angle for next child
-          parentChildAngles[parentId] = (angle + 45) % 360;
-
-          pushToUndo();
-          nodesData.push(newNode);
-          renderMindMap();
-          focusNode(newId);
-          return;
-        }
-
-        // Try next angle
-        angle = (angle + 45) % 360;
-        attempts++;
-      }
-
-      // If all positions tried, just place it at the current angle anyway
-      let newX = parentX + radius * Math.cos(angle * Math.PI / 180);
-      let newY = parentY + radius * Math.sin(angle * Math.PI / 180);
-      const containerRect = container.getBoundingClientRect();
-      newY = Math.max(100, Math.min(newY, containerRect.height - 100));
-
-      const newNode = {
-        id: newId,
-        parentId: parentId,
-        x: newX,
-        y: newY,
-        color: colors[0],
-        text: ''
-      }
-
-        ;
-
-      parentChildAngles[parentId] = (angle + 45) % 360;
-
-      pushToUndo();
-      nodesData.push(newNode);
-      renderMindMap();
-      focusNode(newId);
+      insertPlacedNode(parentId);
     }
-
 
     function addSiblingNode(currentNodeId) {
       const currentNode = nodesData.find(n => n.id === currentNodeId);
       if (!currentNode) return;
-
-      const siblingRadius = 200;
-      let siblingX = currentNode.x + siblingRadius * Math.cos(siblingAngle * Math.PI / 180);
-      let siblingY = currentNode.y + siblingRadius * Math.sin(siblingAngle * Math.PI / 180);
-      siblingAngle += 45;
-
-      // Constrain the Y position of the new sibling node
-      const containerRect = container.getBoundingClientRect();
-      siblingY = Math.max(100, Math.min(siblingY, containerRect.height - 100)); // Prevent creation too high or too low
-
-      const newId = generateId();
-
-      const newNode = {
-        id: newId,
-        parentId: currentNode.parentId,
-        x: siblingX,
-        y: siblingY,
-        color: colors[0],
-        text: ''
+      // The toolbar's sibling button intentionally supports disconnected ideas.
+      // Enter on the centre still calls addNode() to create a connected branch.
+      if (currentNodeId === centralNodeId || !currentNode.parentId) {
+        insertPlacedNode(currentNodeId, null, true);
+      } else {
+        insertPlacedNode(currentNode.parentId, currentNodeId);
       }
-
-        ;
-      pushToUndo();
-      nodesData.push(newNode);
-      renderMindMap();
-      focusNode(newId);
     }
 
 
@@ -1343,43 +1484,38 @@
     }
 
     function updateNodeText(nodeId) {
-      const node = nodesData.find(n => n.id === nodeId);
-      const nodeDiv = document.getElementById(nodeId);
+      const node = nodesById.get(nodeId);
+      const nodeDiv = nodeElements.get(nodeId);
       if (node && nodeDiv) {
         // In Edit Mode (which triggers input), innerText is the raw text.
         // We don't need to filter out the link icon because it's not rendered in Edit Mode.
         node.text = nodeDiv.innerText;
+        nodeContentState.set(nodeDiv, { key: contentKey(node), editing: true });
+        refreshNodeGeometry(nodeId);
+        revealNode(nodeId);
         updateDocumentTitle();
         updateURL();
       }
     }
 
     function renderNodeContent(nodeDiv, node, editMode) {
-      console.log('renderNodeContent called:', { nodeId: node.id, text: node.text, editMode });
+      const key = contentKey(node);
+      const previous = nodeContentState.get(nodeDiv);
+      nodeContentState.set(nodeDiv, { key, editing: editMode });
+      // Plain labels have identical edit/view content. Retaining their text node
+      // also retains the caret when focus or a toolbar action changes the mode.
+      if (previous && previous.key === key && (previous.editing === editMode || (!node.image && !node.link))) return;
       if (editMode) {
         // Edit Mode: Raw text
         nodeDiv.innerText = node.text;
-
-        // Apply selection style immediately for edit mode
-        if (node.link || node.image) {
-          nodeDiv.style.borderColor = '#3b82f6'; // Blue
-        } else {
-          nodeDiv.style.borderColor = '#10b981'; // Green
-        }
       } else {
         // View Mode: Plain text + Image + Link Icon
         // Set text FIRST before clearing to prevent updateNodeText from seeing empty content
         if (node.text) {
           nodeDiv.textContent = node.text;
-          console.log('Text content set:', node.text);
         } else {
           nodeDiv.textContent = '';
-          console.log('No text to set for node:', node.id);
         }
-
-        // Now add images and links as additional children
-        // Reset border color to default in view mode (highlightSelectedNode handles selection)
-        nodeDiv.style.borderColor = '';
 
         // Render Image if present
         if (node.image) {
@@ -1388,6 +1524,10 @@
           img.className = 'node-md-image';
           img.alt = 'Node Image';
           img.contentEditable = 'false';
+          img.addEventListener('load', () => {
+            // Export clones must not change the live map's coordinates.
+            if (nodeDiv.parentElement === canvasLayer && refreshNodeGeometry(node.id)) updateURL();
+          });
 
           // Apply custom size if exists
           if (node.imageSize) {
@@ -1439,218 +1579,363 @@
 
     let isDraggingFlag = false;
     let currentDraggedNodeId = null;
-    let dragOffsetX = 0;
-    let dragOffsetY = 0;
     let currentDropTarget = null;
+    let dragSession = null;
+    let dragFrame = null;
+    let suppressClickUntil = 0;
+
+    function eventPoint(event, touchId = null) {
+      if (event.touches || event.changedTouches) {
+        const touches = Array.from(event.touches || []).concat(Array.from(event.changedTouches || []));
+        return touches.find(touch => touchId === null || touch.identifier === touchId);
+      }
+      return Number.isFinite(event.clientX) && Number.isFinite(event.clientY) ? event : null;
+    }
 
     function startDrag(event, nodeId = null) {
-      const nodeElement = nodeId
-        ? document.getElementById(nodeId)
-        : (event.currentTarget && event.currentTarget.classList && event.currentTarget.classList.contains('node'))
-          ? event.currentTarget
-          : (event.target.closest ? event.target.closest('.node') : null);
-
-      if (!nodeElement) {
-        return;
+      if (dragSession || isPanning || event.isPrimary === false || (event.button !== undefined && event.button !== 0)) return;
+      if (event.target && event.target.closest('a, button, input')) return;
+      if (event.touches && event.touches.length !== 1) return;
+      const element = nodeId ? nodeElements.get(nodeId) : event.target && event.target.closest('.node');
+      const node = element && nodesById.get(element.id);
+      const point = eventPoint(event);
+      if (!node || !point) return;
+      if (event.touches && event.cancelable) event.preventDefault();
+      suppressClickUntil = 0;
+      const pointer = event.pointerId !== undefined;
+      dragSession = {
+        node, element, before: { ...node }, startX: point.clientX, startY: point.clientY,
+        panX, panY, point, pending: false, moved: false,
+        pointerId: pointer ? event.pointerId : null,
+        touchId: point.identifier === undefined ? null : point.identifier,
+        threshold: event.pointerType === 'touch' || event.touches ? 7 : 4,
+        blocked: new Set([node.id]), edges: incidentConnections(node.id)
+      };
+      // Compute invalid drop targets once, rather than walking the tree per frame.
+      const descendants = [node.id];
+      for (let i = 0; i < descendants.length; i++) {
+        (childrenByParent.get(descendants[i]) || []).forEach(id => {
+          if (!dragSession.blocked.has(id)) {
+            dragSession.blocked.add(id);
+            descendants.push(id);
+          }
+        });
       }
-
       isDraggingFlag = true;
-      currentDraggedNodeId = nodeId || nodeElement.id;
-      const nodeRect = nodeElement.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
+      currentDraggedNodeId = node.id;
+      setSelectedNode(node.id);
+      if (pointer) {
+        container.setPointerCapture(event.pointerId);
+        document.addEventListener('pointermove', dragNode, { passive: false });
+        document.addEventListener('pointerup', stopDrag);
+        document.addEventListener('pointercancel', cancelDrag);
+        container.addEventListener('lostpointercapture', cancelDrag);
+      } else {
+        document.addEventListener('mousemove', dragNode);
+        document.addEventListener('mouseup', stopDrag);
+        document.addEventListener('touchmove', dragNode, { passive: false });
+        document.addEventListener('touchend', stopDrag);
+        document.addEventListener('touchcancel', cancelDrag);
+      }
+    }
 
-      // Handle both mouse and touch events
-      const clientX = event.clientX || (event.touches && event.touches[0].clientX);
-      const clientY = event.clientY || (event.touches && event.touches[0].clientY);
-
-      dragOffsetX = clientX - nodeRect.left;
-      dragOffsetY = clientY - nodeRect.top;
-
-      // Add visual feedback for dragging
-      nodeElement.classList.add('dragging');
-
-      // Add both mouse and touch event listeners
-      document.addEventListener('mousemove', dragNode);
-      document.addEventListener('mouseup', stopDrag);
-      document.addEventListener('touchmove', dragNode, { passive: false });
-      document.addEventListener('touchend', stopDrag);
+    function matchesDrag(event) {
+      if (!dragSession) return false;
+      return !event || event.pointerId === undefined || dragSession.pointerId === event.pointerId;
     }
 
     function dragNode(event) {
-      if (!isDraggingFlag || !currentDraggedNodeId) return;
+      if (!matchesDrag(event)) return;
+      if (event.touches && event.touches.length > 1) { cancelDrag(); return; }
+      const point = eventPoint(event, dragSession.touchId);
+      if (!point) return;
+      const session = dragSession;
+      session.point = { clientX: point.clientX, clientY: point.clientY };
+      if (!session.moved && Math.hypot(point.clientX - session.startX, point.clientY - session.startY) < session.threshold) return;
+      if (event.cancelable) event.preventDefault();
+      session.pending = true;
+      if (dragFrame === null) dragFrame = requestAnimationFrame(paintDrag);
+    }
 
-      // Prevent default touch behavior (scrolling)
-      if (event.type === 'touchmove') {
-        event.preventDefault();
+    function paintDrag() {
+      if (dragFrame !== null) cancelAnimationFrame(dragFrame);
+      dragFrame = null;
+      const session = dragSession;
+      if (!session || !session.pending) return;
+      session.pending = false;
+      if (!session.moved) {
+        session.moved = true;
+        // Focusing an image/link editor may have changed its anchored position
+        // between pointerdown and the first movement.
+        session.baseX = session.node.x;
+        session.baseY = session.node.y;
+        delete session.node.placementRight;
+        session.element.classList.add('dragging');
+        canvasLayer.classList.add('is-dragging');
+        container.style.cursor = 'grabbing';
+        session.edges.forEach(id => connectionElements.get(id)?.classList.add('connection-active'));
+        const selection = window.getSelection();
+        if (selection) selection.removeAllRanges();
       }
+      const dx = session.point.clientX - session.startX - (panX - session.panX);
+      const dy = session.point.clientY - session.startY - (panY - session.panY);
+      session.node.x = session.baseX + dx;
+      session.node.y = session.baseY + dy;
+      // Keep left/top fixed during the gesture; transform has no positional easing.
+      session.element.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+      session.edges.forEach(id => dirtyConnections.add(id));
+      flushConnectionUpdates();
 
-      const containerRect = container.getBoundingClientRect();
-
-      // Handle both mouse and touch events
-      const clientX = event.clientX || (event.touches && event.touches[0].clientX);
-      const clientY = event.clientY || (event.touches && event.touches[0].clientY);
-
-      // Calculate new position relative to container, then subtract pan offset
-      let newX = clientX - containerRect.left - dragOffsetX - panX;
-      let newY = clientY - containerRect.top - dragOffsetY - panY;
-
-      // Removed strict bounds to allow infinite canvas
-      // But let's keep a tiny safety buffer so you can't lose it entirely? 
-      // Actually, infinite needs no bounds. 
-      // Maybe just prevent negative coords if we want top-left to be origin, 
-      // but for true infinite, negative coords are fine if handled correctly.
-      // For now, let's allow negative coords to support expanding left/top.
-
-      const node = nodesData.find(n => n.id === currentDraggedNodeId);
-
-      if (node) {
-        node.x = newX;
-        node.y = newY;
-
-        const nodeElement = document.getElementById(node.id);
-        if (nodeElement) {
-          nodeElement.style.left = `${newX}px`;
-          nodeElement.style.top = `${newY}px`;
-        }
-
-        drawConnections();
+      // The dragged card ignores hit testing, so the browser finds the card
+      // underneath without reading every node's bounding rectangle.
+      let target = null;
+      if (interactionMode === 'move' && session.node.id !== centralNodeId) {
+        const hit = document.elementFromPoint(session.point.clientX, session.point.clientY);
+        const candidate = hit && hit.closest('.node');
+        if (candidate && nodeElements.get(candidate.id) === candidate && !session.blocked.has(candidate.id)) target = candidate;
       }
-
-      // Check if we're hovering over another node (potential drop target)
-      if (interactionMode === 'move') {
-        const allNodes = document.querySelectorAll('.node');
-        let foundTarget = null;
-
-        allNodes.forEach(nodeDiv => {
-          // Skip the dragged node itself
-          if (nodeDiv.id === currentDraggedNodeId) return;
-
-          const rect = nodeDiv.getBoundingClientRect();
-          if (clientX >= rect.left && clientX <= rect.right &&
-            clientY >= rect.top && clientY <= rect.bottom) {
-            foundTarget = nodeDiv;
-          }
-        });
-
-        // Update drop target highlighting
-        if (foundTarget !== currentDropTarget) {
-          // Remove highlight from previous target
-          if (currentDropTarget) {
-            currentDropTarget.classList.remove('drop-target');
-          }
-          // Add highlight to new target
-          if (foundTarget) {
-            foundTarget.classList.add('drop-target');
-          }
-          currentDropTarget = foundTarget;
-        }
+      if (target !== currentDropTarget) {
+        if (currentDropTarget) currentDropTarget.classList.remove('drop-target');
+        if (target) target.classList.add('drop-target');
+        currentDropTarget = target;
       }
     }
 
+    function placeReparentedNode(node, parentId) {
+      const snapshot = getPlacementSnapshot();
+      const parent = snapshot.byId.get(parentId);
+      const size = nodeSizes.get(node.id);
+      const side = parentId === centralNodeId
+        ? (node.x + size.width / 2 < parent.x + parent.width / 2 ? 'left' : 'right')
+        : snapshot.sideFor(parentId);
+      const gap = parentId === centralNodeId ? 100 : BRANCH_GAP;
+      node.x = side === 'left' ? parent.x - gap - size.width : parent.right + gap;
+      const obstacles = Array.from(snapshot.byId.values()).filter(other => other.id !== node.id);
+      node.y = findFreeNodeY(node.x, parent.y + (parent.height - size.height) / 2, size.width, size.height, obstacles, false);
+      if (side === 'left') node.placementRight = node.x + size.width;
+      else delete node.placementRight;
+      node.parentId = parentId;
+    }
 
-    function stopDrag() {
-      // Handle reparenting if dropped on another node
-      if (currentDropTarget && currentDraggedNodeId && interactionMode === 'move') {
-        const targetNodeId = currentDropTarget.id;
-        const draggedNode = nodesData.find(n => n.id === currentDraggedNodeId);
+    function stopDrag(event, cancelled = false) {
+      if (!matchesDrag(event)) return;
+      const session = dragSession;
+      if (!cancelled) {
+        // Release may arrive before the queued frame or contain the final position.
+        const point = event && eventPoint(event, session.touchId);
+        if (point && (session.moved || session.pending)) {
+          session.point = { clientX: point.clientX, clientY: point.clientY };
+          session.pending = true;
+        }
+        paintDrag();
+      } else if (dragFrame !== null) {
+        cancelAnimationFrame(dragFrame);
+        dragFrame = null;
+      }
 
-        // Prevent making a node its own parent or creating circular dependencies
-        if (targetNodeId !== currentDraggedNodeId && !isDescendant(targetNodeId, currentDraggedNodeId)) {
-          // Update the parent relationship
-          if (draggedNode) {
-            draggedNode.parentId = targetNodeId;
-
-            // Optionally reposition the node near its new parent
-            const targetNode = nodesData.find(n => n.id === targetNodeId);
-            if (targetNode) {
-              // Position it to the right of the new parent
-              draggedNode.x = targetNode.x + 200;
-              draggedNode.y = targetNode.y;
-            }
-
-            saveState();
-            renderMindMap();
+      let reparented = false;
+      if (session.moved) {
+        if (cancelled) {
+          Object.assign(session.node, session.before);
+          if (!Number.isFinite(session.before.placementRight)) delete session.node.placementRight;
+        } else {
+          const targetId = currentDropTarget && currentDropTarget.id;
+          if (targetId && targetId !== session.node.parentId) {
+            placeReparentedNode(session.node, targetId);
+            reparented = true;
+          }
+          const changed = session.node.x !== session.before.x || session.node.y !== session.before.y || reparented;
+          if (changed) {
+            undoStack.push(JSON.parse(JSON.stringify(nodesData.map(node => node.id === session.node.id ? session.before : node))));
+            redoStack = [];
+          } else if (Number.isFinite(session.before.placementRight)) {
+            session.node.placementRight = session.before.placementRight;
           }
         }
-      }
-
-      // Clean up
-      if (currentDropTarget) {
-        currentDropTarget.classList.remove('drop-target');
-        currentDropTarget = null;
-      }
-
-      if (currentDraggedNodeId) {
-        const draggedElement = document.getElementById(currentDraggedNodeId);
-        if (draggedElement) {
-          draggedElement.classList.remove('dragging');
+        session.element.style.left = `${session.node.x}px`;
+        session.element.style.top = `${session.node.y}px`;
+        session.element.style.transform = '';
+        session.element.classList.remove('dragging');
+        refreshNodeGeometry(session.node.id);
+        session.edges.forEach(id => {
+          connectionElements.get(id)?.classList.remove('connection-active');
+          dirtyConnections.add(id);
+        });
+        if (reparented) {
+          rebuildNodeIndex();
+          drawConnections();
+        } else {
+          flushConnectionUpdates();
         }
+        suppressClickUntil = performance.now() + 350;
       }
-
+      if (currentDropTarget) currentDropTarget.classList.remove('drop-target');
+      currentDropTarget = null;
+      canvasLayer.classList.remove('is-dragging');
+      container.style.cursor = '';
+      dragSession = null;
       isDraggingFlag = false;
       currentDraggedNodeId = null;
+      document.removeEventListener('pointermove', dragNode);
+      document.removeEventListener('pointerup', stopDrag);
+      document.removeEventListener('pointercancel', cancelDrag);
+      container.removeEventListener('lostpointercapture', cancelDrag);
       document.removeEventListener('mousemove', dragNode);
       document.removeEventListener('mouseup', stopDrag);
       document.removeEventListener('touchmove', dragNode);
       document.removeEventListener('touchend', stopDrag);
-      updateURL();
+      document.removeEventListener('touchcancel', cancelDrag);
+      if (session.pointerId !== null && container.hasPointerCapture(session.pointerId)) container.releasePointerCapture(session.pointerId);
+      if (session.moved && !cancelled) updateURL();
     }
 
-    // Helper function to check if a node is a descendant of another
-    function isDescendant(potentialDescendantId, ancestorId) {
-      let currentNode = nodesData.find(n => n.id === potentialDescendantId);
+    function cancelDrag(event) {
+      stopDrag(event, true);
+    }
 
-      while (currentNode && currentNode.parentId) {
-        if (currentNode.parentId === ancestorId) {
-          return true;
-        }
-        currentNode = nodesData.find(n => n.id === currentNode.parentId);
+    container.addEventListener('click', event => {
+      if (performance.now() < suppressClickUntil && (event.target === container || event.target === canvasLayer || event.target.closest('.node'))) {
+        event.preventDefault();
+        event.stopPropagation();
       }
-
-      return false;
-    }
+    }, true);
+    container.addEventListener(window.PointerEvent ? 'pointerdown' : 'mousedown', () => { suppressClickUntil = 0; }, true);
+    window.addEventListener('blur', () => cancelDrag());
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && dragSession) {
+        event.preventDefault();
+        cancelDrag();
+      }
+    });
 
     function focusNode(nodeId) {
       const nodeDiv = document.getElementById(nodeId);
 
       if (nodeDiv) {
-        nodeDiv.focus();
         setSelectedNode(nodeId);
+        revealNode(nodeId);
+        // Keep focus synchronous with the user's tap so iPad can open the keyboard.
+        nodeDiv.focus({ preventScroll: true });
+        revealNode(nodeId);
       }
     }
 
-    function drawConnections() {
-      // Reverting to original simple logic for screen display consistency
-      // The heavy lifting for large maps is now done in the export function
-      svg.innerHTML = '';
+    function revealNode(nodeId) {
+      const node = nodesData.find(n => n.id === nodeId);
+      const element = document.getElementById(nodeId);
+      if (!node || !element) return;
+      const bounds = container.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      const left = viewport ? viewport.offsetLeft : 0;
+      const top = viewport ? viewport.offsetTop : 0;
+      const right = left + (viewport ? viewport.width : window.innerWidth);
+      const bottom = top + (viewport ? viewport.height : window.innerHeight);
+      const toolbar = document.getElementById('toolbar-dock').getBoundingClientRect();
+      const padding = 24;
+      const safeLeft = Math.max(left, bounds.left) + padding;
+      const safeRight = Math.min(right, bounds.right) - padding;
+      const safeTop = Math.max(top, bounds.top, toolbar.bottom) + padding;
+      const safeBottom = Math.min(bottom, bounds.bottom) - padding;
+      if (safeRight <= safeLeft || safeBottom <= safeTop) return;
 
-      nodesData.forEach(node => {
-        if (node.parentId) {
-          const parentNode = nodesData.find(n => n.id === node.parentId);
+      const x = bounds.left + node.x + panX;
+      const y = bounds.top + node.y + panY;
+      const width = element.offsetWidth;
+      const height = element.offsetHeight;
+      if (width > safeRight - safeLeft) {
+        panX += Number.isFinite(node.placementRight) ? safeRight - x - width : safeLeft - x;
+      } else if (x < safeLeft) {
+        panX += safeLeft - x;
+      } else if (x + width > safeRight) {
+        panX += safeRight - x - width;
+      }
+      if (height > safeBottom - safeTop || y < safeTop) {
+        panY += safeTop - y;
+      } else if (y + height > safeBottom) {
+        panY += safeBottom - y - height;
+      }
+      updateCanvasTransform();
+    }
 
-          if (parentNode) {
-            drawLine(parentNode, node);
-          }
-        }
+    let revealFrame = null;
+    function revealFocusedNode() {
+      if (revealFrame !== null) return;
+      revealFrame = requestAnimationFrame(() => {
+        revealFrame = null;
+        const focused = document.activeElement;
+        if (focused && focused.classList.contains('node')) revealNode(focused.id);
       });
     }
 
-    function drawLine(parent, child) {
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      // Original offsets that worked well for the screen
-      line.setAttribute('x1', parent.x + 50);
-      line.setAttribute('y1', parent.y + 30);
-      line.setAttribute('x2', child.x + 50);
-      line.setAttribute('y2', child.y + 30);
-      line.setAttribute('stroke', 'rgba(0, 0, 0, 0.4)');
-      line.setAttribute('stroke-width', '2');
-      svg.appendChild(line);
+    function drawConnections() {
+      // Reconcile structure without replacing surviving SVG elements.
+      connectionElements.forEach((line, childId) => {
+        const child = nodesById.get(childId);
+        if (!child || !nodesById.has(child.parentId)) {
+          line.remove();
+          connectionElements.delete(childId);
+        }
+      });
+      nodesData.forEach(node => {
+        if (nodesById.has(node.parentId)) {
+          if (!connectionElements.has(node.id)) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.dataset.childId = node.id;
+            connectionElements.set(node.id, line);
+            svg.appendChild(line);
+          }
+          dirtyConnections.add(node.id);
+        }
+      });
+      flushConnectionUpdates();
+    }
+
+    function incidentConnections(nodeId) {
+      const ids = new Set(childrenByParent.get(nodeId) || []);
+      if (connectionElements.has(nodeId)) ids.add(nodeId);
+      return ids;
+    }
+
+    function queueNodeConnections(nodeId) {
+      incidentConnections(nodeId).forEach(id => dirtyConnections.add(id));
+      if (dirtyConnections.size && connectionFrame === null) {
+        connectionFrame = requestAnimationFrame(flushConnectionUpdates);
+      }
+    }
+
+    function getConnectionPoints(parent, child) {
+      const a = nodeSizes.get(parent.id) || { width: 120, height: 50 };
+      const b = nodeSizes.get(child.id) || { width: 120, height: 50 };
+      const ax = parent.x + a.width / 2;
+      const ay = parent.y + a.height / 2;
+      const bx = child.x + b.width / 2;
+      const by = child.y + b.height / 2;
+      const dx = bx - ax;
+      const dy = by - ay;
+      const start = Math.min(a.width / 2 / Math.abs(dx || 0.001), a.height / 2 / Math.abs(dy || 0.001), 0.5);
+      const end = Math.min(b.width / 2 / Math.abs(dx || 0.001), b.height / 2 / Math.abs(dy || 0.001), 0.5);
+      return { x1: ax + dx * start, y1: ay + dy * start, x2: bx - dx * end, y2: by - dy * end };
+    }
+
+    function flushConnectionUpdates() {
+      if (connectionFrame !== null) cancelAnimationFrame(connectionFrame);
+      connectionFrame = null;
+      dirtyConnections.forEach(childId => {
+        const child = nodesById.get(childId);
+        const parent = child && nodesById.get(child.parentId);
+        const line = connectionElements.get(childId);
+        if (!line || !parent) return;
+        const points = getConnectionPoints(parent, child);
+        Object.entries(points).forEach(([name, value]) => {
+          const coordinate = String(value);
+          if (line.getAttribute(name) !== coordinate) line.setAttribute(name, coordinate);
+        });
+      });
+      dirtyConnections.clear();
     }
 
     function updateURL() {
-      console.log('updateURL called, nodesData:', nodesData);
       if (!isInitialized) {
-        console.log('updateURL skipped: not initialized');
         return;
       }
       if (!urlStorageEnabled) {
@@ -1661,7 +1946,6 @@
       const serializedData = JSON.stringify(nodesData);
       const encodedData = btoa(encodeURIComponent(serializedData));
       const fullURL = '#' + encodedData;
-      console.log('updateURL encoding:', serializedData);
 
       window.history.replaceState(null, null, fullURL);
       updateURLStatus(fullURL.length, true);
@@ -1807,6 +2091,7 @@
         x: 0,
         y: 0
       };
+      delete newCentralNode.placementRight;
 
       // Map old IDs to new IDs if we wanted to be super clean, but keeping IDs (except central) is fine
       // providing we update the parentId of the direct children.
@@ -1931,9 +2216,17 @@
       updateURL();
     });
 
+    // Keyboard/rotation changes should reveal the editor without rebuilding it
+    // and losing focus or the text selection on iPad.
     window.addEventListener('resize', () => {
-      renderMindMap();
+      cancelDrag();
+      stopPan();
+      revealFocusedNode();
     });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', revealFocusedNode);
+      window.visualViewport.addEventListener('scroll', revealFocusedNode);
+    }
 
     // Event listeners for main buttons
     document.getElementById('mode-toggle-btn').addEventListener('click', toggleMode);
@@ -2080,14 +2373,13 @@
       pushToUndo();
 
       const containerRect = container.getBoundingClientRect();
-      const centerX = containerRect.width / 2;
-      const centerY = containerRect.height / 2;
+      const centerX = containerRect.width / 2 - panX;
+      const centerY = containerRect.height / 2 - panY;
+      const snapshot = getPlacementSnapshot();
 
       // Constants for layout
-      const NODE_WIDTH = 140;
-      const NODE_HEIGHT = 60;
-      const H_GAP = 60;
-      const V_GAP = 20;
+      const H_GAP = BRANCH_GAP;
+      const V_GAP = NODE_GAP;
 
       // 1. Build Tree Structure
       // We need a temporary tree structure to calculate dimensions
@@ -2095,14 +2387,14 @@
       if (!rootNodeData) return;
 
       function buildTree(nodeId) {
-        const node = nodesData.find(n => n.id === nodeId);
+        const node = snapshot.byId.get(nodeId);
         if (!node) return null;
 
         const layoutNode = {
           id: node.id,
           text: node.text,
-          width: NODE_WIDTH,
-          height: NODE_HEIGHT,
+          width: node.width,
+          height: node.height,
           x: 0,
           y: 0,
           children: [],
@@ -2111,8 +2403,8 @@
         };
 
         // Find children
-        const childNodes = nodesData.filter(n => n.parentId === nodeId);
-        layoutNode.children = childNodes.map(c => buildTree(c.id)).filter(n => n !== null);
+        const childIds = snapshot.children.get(nodeId) || [];
+        layoutNode.children = childIds.map(buildTree).filter(n => n !== null);
 
         return layoutNode;
       }
@@ -2229,6 +2521,11 @@
         if (dataNode) {
           dataNode.x = layoutNode.x;
           dataNode.y = layoutNode.y;
+          if (layoutNode.side === 'left') {
+            dataNode.placementRight = layoutNode.x + layoutNode.width;
+          } else {
+            delete dataNode.placementRight;
+          }
         }
         layoutNode.children.forEach(updateNodesData);
       }
@@ -2283,11 +2580,11 @@
             const parent = nodesData.find(n => n.id === node.parentId);
             if (parent) {
               const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-              // Use same offset logic as original drawLine (+50, +30)
-              line.setAttribute('x1', parent.x + 50 + offsetX);
-              line.setAttribute('y1', parent.y + 30 + offsetY);
-              line.setAttribute('x2', node.x + 50 + offsetX);
-              line.setAttribute('y2', node.y + 30 + offsetY);
+              const points = getConnectionPoints(parent, node);
+              line.setAttribute('x1', points.x1 + offsetX);
+              line.setAttribute('y1', points.y1 + offsetY);
+              line.setAttribute('x2', points.x2 + offsetX);
+              line.setAttribute('y2', points.y2 + offsetY);
               line.setAttribute('stroke', 'rgba(0, 0, 0, 0.4)');
               line.setAttribute('stroke-width', '2');
               exportSvg.appendChild(line);
@@ -2806,10 +3103,7 @@
         if (node.parentId) {
           const parent = nodesData.find(n => n.id === node.parentId);
           if (parent) {
-            const x1 = parent.x + 50;
-            const y1 = parent.y + 30;
-            const x2 = node.x + 50;
-            const y2 = node.y + 30;
+            const { x1, y1, x2, y2 } = getConnectionPoints(parent, node);
             svgContent += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(0,0,0,0.4)" stroke-width="2" />`;
           }
         }
