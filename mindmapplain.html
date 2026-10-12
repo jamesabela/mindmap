@@ -154,32 +154,49 @@
       left: 50%;
       transform: translateX(-50%);
       display: flex;
-      flex-direction: row;
-      gap: 4px;
+      flex-direction: column;
+      gap: 6px 10px;
       z-index: 100;
       align-items: center;
       width: max-content;
-      max-width: calc(100vw - 32px);
-      flex-wrap: wrap;
-      /* Allow wrapping for responsiveness */
+      max-width: calc(100vw - 24px);
+      box-sizing: border-box;
       justify-content: center;
       pointer-events: none;
       background: var(--toolbar-bg);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
-      padding: 4px 8px;
+      padding: 8px;
       border-radius: 8px;
       box-shadow: var(--glass-shadow);
       border: 1px solid var(--glass-border);
     }
 
+    .toolbar-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: nowrap;
+    }
+
     .toolbar-panel {
       pointer-events: auto;
-      display: contents;
-      /* Remove panel visual, just use as logical group */
+      display: flex;
+      flex: 0 0 auto;
+      flex-wrap: nowrap;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 2px 4px;
+      min-height: 38px;
+      box-sizing: border-box;
+      border-radius: 6px;
+      background: rgba(241, 245, 249, 0.6);
     }
 
     .divider {
+      flex: 0 0 1px;
       width: 1px;
       height: 16px;
       background: rgba(0, 0, 0, 0.1);
@@ -198,7 +215,7 @@
       font-size: 12px;
       font-weight: 500;
       font-family: var(--font-family);
-      transition: all 0.2s ease;
+      transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
       display: inline-flex;
       align-items: center;
       gap: 4px;
@@ -710,6 +727,10 @@
       will-change: transform;
     }
 
+    .node.tidying {
+      will-change: transform;
+    }
+
     /* One small frosted halo, with crisp text and an inexpensive shadow fallback. */
     .node.dragging::before {
       content: '';
@@ -749,10 +770,19 @@
     /* Responsive toolbar for iPad */
     @media (max-width: 1024px) {
       #toolbar-dock {
+        width: 610px;
+        flex-direction: row;
         flex-wrap: wrap;
-        max-width: 95%;
-        gap: 6px;
-        padding: 6px 10px;
+        gap: 6px 8px;
+      }
+
+      /* Reflow whole groups into two rows as the touch controls get larger. */
+      .toolbar-row {
+        display: contents;
+      }
+
+      .toolbar-panel {
+        min-height: 48px;
       }
 
       .icon-btn,
@@ -810,14 +840,48 @@
 
       /* Make toolbar even more compact */
       #toolbar-dock {
-        gap: 4px;
-        padding: 4px 6px;
+        width: 420px;
+        max-width: calc(100vw - 16px);
+        gap: 6px;
+        padding: 6px;
+      }
+
+      #main-actions {
+        flex-basis: 100%;
       }
 
       .icon-btn,
       .main-button {
         padding: 8px 10px;
         font-size: 13px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      #toolbar-dock {
+        column-gap: 4px;
+      }
+
+      #mode-toggle-btn {
+        min-width: 80px;
+      }
+
+      #main-actions {
+        gap: 3px;
+        padding-inline: 0;
+      }
+
+      #main-actions .main-button {
+        padding-inline: 8px;
+      }
+
+      #main-actions .divider {
+        margin-inline: 1px;
+      }
+
+      #delete-node-btn span,
+      #download-json-btn span {
+        display: none;
       }
     }
   </style>
@@ -832,67 +896,75 @@
       <div id="central-node" class="node central-node" contenteditable="true" tabindex="0"
         data-placeholder="Central topic"></div>
     </div>
-    <div id="toolbar-dock">
-      <!-- Main Actions: vector icons describe commands; emoji buttons below insert content. -->
-      <div class="toolbar-panel" id="main-actions">
-        <button id="mode-toggle-btn" class="main-button move-mode" title="Switch to Edit mode" aria-label="Move mode. Switch to Edit mode">
-          <svg class="action-icon mode-move-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></svg><svg class="action-icon mode-edit-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 4 5 5M4 20l5-1L20 8a2 2 0 0 0-5-5L4 14z"/></svg><span class="mode-label">Move</span>
-        </button>
-        <div class="divider"></div>
-        <button id="add-node-btn" class="main-button primary-btn" title="Add sibling; select the centre for a disconnected node" aria-label="Add sibling; select the centre for a disconnected node"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="12" height="7" rx="2"/><rect x="3" y="15" width="12" height="6" rx="2"/><path d="M20 12v6M17 15h6"/></svg><span>Node</span></button>
-        <button id="add-child-btn" class="main-button primary-btn" title="Add child (Tab)" aria-label="Add child (Tab)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="3" width="9" height="6" rx="2"/><path d="M6 9v8h5M17 13v8M13 17h8"/></svg><span>Child</span></button>
-        <button id="delete-node-btn" class="main-button delete-button" title="Delete selected branch" aria-label="Delete selected branch"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg><span>Delete</span></button>
-        <button id="split-node-btn" class="icon-btn hide-mobile" title="Open selected branch as a new mindmap" aria-label="Open selected branch as a new mindmap"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="12" width="7" height="7" rx="1.5"/><path d="M6.5 12V5H11M14 3h7v7M21 3l-8 8M14 15h7v6h-7"/></svg></button>
-        <div class="divider"></div>
-        <button id="undo-btn" class="icon-btn hide-mobile" title="Undo" aria-label="Undo"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m9 4-5 5 5 5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
-        <button id="redo-btn" class="icon-btn hide-mobile" title="Redo" aria-label="Redo"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 4 5 5-5 5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
-        <button id="add-link-btn" class="icon-btn hide-mobile" title="Add or edit a link or image" aria-label="Add or edit a link or image"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m10 13 4-4M8 15l-1 1a3.5 3.5 0 0 1-5-5l4-4a3.5 3.5 0 0 1 5 0M16 9l1-1a3.5 3.5 0 0 1 5 5l-4 4a3.5 3.5 0 0 1-5 0"/></svg></button>
-        <button id="copy-text-btn" class="icon-btn hide-tablet" title="Copy mindmap as text" aria-label="Copy mindmap as text"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3M12 12h5M12 16h5"/></svg></button>
-        <div class="divider"></div>
-        <button id="auto-layout-btn" class="icon-btn hide-mobile" title="Tidy mindmap layout" aria-label="Tidy mindmap layout"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="8" y="9" width="8" height="6" rx="1.5"/><rect x="2" y="2" width="5" height="4" rx="1"/><rect x="17" y="2" width="5" height="4" rx="1"/><rect x="2" y="18" width="5" height="4" rx="1"/><rect x="17" y="18" width="5" height="4" rx="1"/><path d="m8 10-4-4m12 4 4-4m-12 8-4 4m12-4 4 4"/></svg></button>
-      </div>
-      <!-- Styling & Emojis -->
-      <div class="toolbar-panel" id="style-panel">
-        <div class="divider"></div>
-        <div id="color-palette" style="display: flex; gap: 4px; align-items: center;">
-          <div class="color-swatch" style="background-color: #FFFFFF;" data-color="#FFFFFF"></div>
-          <div class="color-swatch" style="background-color: #FFD700;" data-color="#FFD700"></div>
-          <div class="color-swatch" style="background-color: #FF4500;" data-color="#FF4500"></div>
-          <div class="color-swatch" style="background-color: #32CD32;" data-color="#32CD32"></div>
-          <div class="color-swatch" style="background-color: #1E90FF;" data-color="#1E90FF"></div>
-          <div class="color-swatch" style="background-color: #BA55D3;" data-color="#BA55D3"></div>
+    <div id="toolbar-dock" role="region" aria-label="Mindmap tools">
+      <div class="toolbar-row">
+        <!-- Main Actions: vector icons describe commands; emoji buttons below insert content. -->
+        <div class="toolbar-panel" id="main-actions" role="group" aria-label="Edit nodes">
+          <button id="mode-toggle-btn" class="main-button move-mode" title="Switch to Edit mode" aria-label="Move mode. Switch to Edit mode">
+            <svg class="action-icon mode-move-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></svg><svg class="action-icon mode-edit-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 4 5 5M4 20l5-1L20 8a2 2 0 0 0-5-5L4 14z"/></svg><span class="mode-label">Move</span>
+          </button>
+          <div class="divider"></div>
+          <button id="add-node-btn" class="main-button primary-btn" title="Add sibling; select the centre for a disconnected node" aria-label="Add sibling; select the centre for a disconnected node"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="12" height="7" rx="2"/><rect x="3" y="15" width="12" height="6" rx="2"/><path d="M20 12v6M17 15h6"/></svg><span>Node</span></button>
+          <button id="add-child-btn" class="main-button primary-btn" title="Add child (Tab)" aria-label="Add child (Tab)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="3" width="9" height="6" rx="2"/><path d="M6 9v8h5M17 13v8M13 17h8"/></svg><span>Child</span></button>
+          <button id="delete-node-btn" class="main-button delete-button" title="Delete selected branch" aria-label="Delete selected branch"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg><span>Delete</span></button>
+          <button id="split-node-btn" class="icon-btn hide-mobile" title="Open selected branch as a new mindmap" aria-label="Open selected branch as a new mindmap"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="12" width="7" height="7" rx="1.5"/><path d="M6.5 12V5H11M14 3h7v7M21 3l-8 8M14 15h7v6h-7"/></svg></button>
         </div>
-        <div class="divider"></div>
-        <div id="emoji-buttons" style="display: flex; gap: 1px;"><button class="emoji-btn"
-            data-emoji="💡">💡</button><button class="emoji-btn" data-emoji="🧠">🧠</button><button class="emoji-btn"
-            data-emoji="📚">📚</button><button class="emoji-btn" data-emoji="🎯">🎯</button><button class="emoji-btn"
-            data-emoji="✅">✅</button><button class="emoji-btn" data-emoji="❌">❌</button><button class="emoji-btn"
-            data-emoji="🛠️">🛠️</button><button class="emoji-btn" data-emoji="🚦">🚦</button><button class="emoji-btn"
-            data-emoji="🎬">🎬</button></div>
+        <div class="toolbar-panel hide-mobile" id="history-actions" role="group" aria-label="Undo and redo">
+          <button id="undo-btn" class="icon-btn hide-mobile" title="Undo" aria-label="Undo"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m9 4-5 5 5 5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+          <button id="redo-btn" class="icon-btn hide-mobile" title="Redo" aria-label="Redo"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 4 5 5-5 5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+        </div>
+        <div class="toolbar-panel" id="organise-actions" role="group" aria-label="Links, text and layout">
+          <button id="add-link-btn" class="icon-btn hide-mobile" title="Add or edit a link or image" aria-label="Add or edit a link or image"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m10 13 4-4M8 15l-1 1a3.5 3.5 0 0 1-5-5l4-4a3.5 3.5 0 0 1 5 0M16 9l1-1a3.5 3.5 0 0 1 5 5l-4 4a3.5 3.5 0 0 1-5 0"/></svg></button>
+          <button id="copy-text-btn" class="icon-btn hide-tablet" title="Copy mindmap as text" aria-label="Copy mindmap as text"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3M12 12h5M12 16h5"/></svg></button>
+          <button id="auto-layout-btn" class="icon-btn" title="Tidy spacing; keep branch sides and order" aria-label="Tidy mindmap layout"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="8" y="9" width="8" height="6" rx="1.5"/><rect x="2" y="2" width="5" height="4" rx="1"/><rect x="17" y="2" width="5" height="4" rx="1"/><rect x="2" y="18" width="5" height="4" rx="1"/><rect x="17" y="18" width="5" height="4" rx="1"/><path d="m8 10-4-4m12 4 4-4m-12 8-4 4m12-4 4 4"/></svg></button>
+        </div>
+        <!-- Styling & Emojis -->
+        <div class="toolbar-panel" id="style-panel" role="group" aria-label="Node colours">
+          <div id="color-palette" style="display: flex; gap: 4px; align-items: center;">
+            <div class="color-swatch" style="background-color: #FFFFFF;" data-color="#FFFFFF"></div>
+            <div class="color-swatch" style="background-color: #FFD700;" data-color="#FFD700"></div>
+            <div class="color-swatch" style="background-color: #FF4500;" data-color="#FF4500"></div>
+            <div class="color-swatch" style="background-color: #32CD32;" data-color="#32CD32"></div>
+            <div class="color-swatch" style="background-color: #1E90FF;" data-color="#1E90FF"></div>
+            <div class="color-swatch" style="background-color: #BA55D3;" data-color="#BA55D3"></div>
+          </div>
+        </div>
       </div>
-      <!-- File Operations -->
-      <div class="toolbar-panel" id="file-ops">
-        <div class="divider"></div>
-        <a href="mindmapplain.html" target="_blank" rel="noopener" class="main-button hide-tablet" title="New mindmap" aria-label="New mindmap"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H5v20h14V7zM14 2v5h5M8 14h8M12 10v8"/></svg><span>New</span></a>
-        <button id="upload-json-btn" class="icon-btn hide-tablet" title="Open an editable mindmap (JSON)" aria-label="Open an editable mindmap (JSON)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7V5a2 2 0 0 1 2-2h4l3 3h7a2 2 0 0 1 2 2v2M3 7v13h16l3-10H7l-4 10"/></svg></button>
-        <input type="file" id="upload-json" accept=".json,application/json" />
-        <button id="download-json-btn" class="main-button" title="Save an editable mindmap (JSON)" aria-label="Save an editable mindmap (JSON)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg><span>Save</span></button>
-        <button id="export-png-btn" class="main-button hide-tablet" title="Export an image (PNG)" aria-label="Export an image (PNG)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 3-3 6 6"/></svg><span>PNG</span></button>
-        <button id="export-svg-btn" class="main-button hide-tablet" title="Export a scalable graphic (SVG)" aria-label="Export a scalable graphic (SVG)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="10" width="4" height="4" rx=".5"/><rect x="18" y="10" width="4" height="4" rx=".5"/><rect x="10" y="2" width="4" height="4" rx=".5"/><path d="M4 10a8 8 0 0 1 6-6m4 0a8 8 0 0 1 6 6M4 14v6m16-6v6M2 20h4m12 0h4"/></svg><span>SVG</span></button>
-        <button id="export-pptx-btn" class="main-button hide-tablet" title="Export PowerPoint slides (PPTX)" aria-label="Export PowerPoint slides (PPTX)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 3h20M4 3v13h16V3M12 16v5m-4 0 4-5 4 5M8 7h8M8 11h4"/></svg><span>PPTX</span></button>
-        <button id="help-btn" class="icon-btn" title="Help" aria-label="Help"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.3 1.7c-1.3.7-1.8 1.3-1.8 2.8M12 17h.01"/></svg></button>
-        <div class="attribution hide-tablet" style="margin-left: 8px;"><a
-            href="https://creativecommons.org/licenses/by-nc-sa/4.0/?ref=chooser-v1" target="_blank"
-            rel="license noopener noreferrer" title="CC BY-NC-SA 4.0"><img style="height:18px!important;"
-              src="https://mirrors.creativecommons.org/presskit/icons/cc.svg?ref=chooser-v1" alt=""><img
-              style="height:18px!important;"
-              src="https://mirrors.creativecommons.org/presskit/icons/by.svg?ref=chooser-v1" alt=""><img
-              style="height:18px!important;"
-              src="https://mirrors.creativecommons.org/presskit/icons/nc.svg?ref=chooser-v1" alt=""><img
-              style="height:18px!important;"
-              src="https://mirrors.creativecommons.org/presskit/icons/sa.svg?ref=chooser-v1" alt=""></a></div>
-        <div id="url-status" class="status-good" title="Click to toggle URL storage"><span
-            class="status-icon">●</span><span id="url-char-count">0</span></div>
+      <div class="toolbar-row">
+        <div class="toolbar-panel" id="emoji-panel" role="group" aria-label="Add an emoji to a node">
+          <div id="emoji-buttons" style="display: flex; gap: 1px;"><button class="emoji-btn"
+              data-emoji="💡">💡</button><button class="emoji-btn" data-emoji="🧠">🧠</button><button class="emoji-btn"
+              data-emoji="📚">📚</button><button class="emoji-btn" data-emoji="🎯">🎯</button><button class="emoji-btn"
+              data-emoji="✅">✅</button><button class="emoji-btn" data-emoji="❌">❌</button><button class="emoji-btn"
+              data-emoji="🛠️">🛠️</button><button class="emoji-btn" data-emoji="🚦">🚦</button><button class="emoji-btn"
+              data-emoji="🎬">🎬</button></div>
+        </div>
+        <!-- File Operations -->
+        <div class="toolbar-panel" id="file-ops" role="group" aria-label="Files and exports">
+          <a href="mindmapplain.html" target="_blank" rel="noopener" class="main-button hide-tablet" title="New mindmap" aria-label="New mindmap"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H5v20h14V7zM14 2v5h5M8 14h8M12 10v8"/></svg><span>New</span></a>
+          <button id="upload-json-btn" class="icon-btn hide-tablet" title="Open an editable mindmap (JSON)" aria-label="Open an editable mindmap (JSON)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7V5a2 2 0 0 1 2-2h4l3 3h7a2 2 0 0 1 2 2v2M3 7v13h16l3-10H7l-4 10"/></svg></button>
+          <input type="file" id="upload-json" accept=".json,application/json" />
+          <button id="download-json-btn" class="main-button" title="Save an editable mindmap (JSON)" aria-label="Save an editable mindmap (JSON)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg><span>Save</span></button>
+          <div class="divider hide-tablet" aria-hidden="true"></div>
+          <button id="export-png-btn" class="main-button hide-tablet" title="Export an image (PNG)" aria-label="Export an image (PNG)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 3-3 6 6"/></svg><span>PNG</span></button>
+          <button id="export-svg-btn" class="main-button hide-tablet" title="Export a scalable graphic (SVG)" aria-label="Export a scalable graphic (SVG)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="10" width="4" height="4" rx=".5"/><rect x="18" y="10" width="4" height="4" rx=".5"/><rect x="10" y="2" width="4" height="4" rx=".5"/><path d="M4 10a8 8 0 0 1 6-6m4 0a8 8 0 0 1 6 6M4 14v6m16-6v6M2 20h4m12 0h4"/></svg><span>SVG</span></button>
+          <button id="export-pptx-btn" class="main-button hide-tablet" title="Export PowerPoint slides (PPTX)" aria-label="Export PowerPoint slides (PPTX)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 3h20M4 3v13h16V3M12 16v5m-4 0 4-5 4 5M8 7h8M8 11h4"/></svg><span>PPTX</span></button>
+        </div>
+        <div class="toolbar-panel" id="utility-actions" role="group" aria-label="Help and storage status">
+          <button id="help-btn" class="icon-btn" title="Help" aria-label="Help"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.3 1.7c-1.3.7-1.8 1.3-1.8 2.8M12 17h.01"/></svg></button>
+          <div class="attribution hide-tablet"><a
+              href="https://creativecommons.org/licenses/by-nc-sa/4.0/?ref=chooser-v1" target="_blank"
+              rel="license noopener noreferrer" title="CC BY-NC-SA 4.0"><img style="height:18px!important;"
+                src="https://mirrors.creativecommons.org/presskit/icons/cc.svg?ref=chooser-v1" alt=""><img
+                style="height:18px!important;"
+                src="https://mirrors.creativecommons.org/presskit/icons/by.svg?ref=chooser-v1" alt=""><img
+                style="height:18px!important;"
+                src="https://mirrors.creativecommons.org/presskit/icons/nc.svg?ref=chooser-v1" alt=""><img
+                style="height:18px!important;"
+                src="https://mirrors.creativecommons.org/presskit/icons/sa.svg?ref=chooser-v1" alt=""></a></div>
+          <div id="url-status" class="status-good" title="Click to toggle URL storage"><span
+              class="status-icon">●</span><span id="url-char-count">0</span></div>
+        </div>
       </div>
     </div>
   </div>
@@ -998,6 +1070,7 @@
     const dirtyConnections = new Set();
     let connectionFrame = null;
     let highlightedNodeId = null;
+    let tidyAnimation = null;
 
     function rebuildNodeIndex() {
       nodesById.clear();
@@ -1023,6 +1096,7 @@
       const moved = syncNodePlacement(node, element, width);
       nodeSizes.set(nodeId, { width, height });
       if (moved || !previous || width !== previous.width || height !== previous.height) {
+        finishTidyAnimation();
         queueNodeConnections(nodeId);
       }
       return moved;
@@ -1059,6 +1133,7 @@
       if (event.touches && event.touches.length !== 1) return;
       const point = eventPoint(event);
       if (!point) return;
+      finishTidyAnimation();
       isPanning = true;
       panStartX = point.clientX - panX;
       panStartY = point.clientY - panY;
@@ -1151,6 +1226,7 @@
 
     // Mode Toggle Functions for iPad usability
     function toggleMode() {
+      finishTidyAnimation();
       cancelDrag();
       stopPan();
       interactionMode = interactionMode === 'move' ? 'edit' : 'move';
@@ -1190,6 +1266,7 @@
     }
 
     function renderMindMap() {
+      finishTidyAnimation();
       cancelDrag();
       rebuildNodeIndex();
       nodeElements.forEach((element, id) => {
@@ -1262,6 +1339,7 @@
 
       // Toggle between edit and view mode to prevent duplicate icons
       nodeDiv.addEventListener('focus', () => {
+        finishTidyAnimation();
         const node = nodesById.get(nodeId);
         if (node && interactionMode === 'edit') {
           renderNodeContent(nodeDiv, node, true);
@@ -1524,6 +1602,7 @@
     }
 
     function updateNodeText(nodeId) {
+      finishTidyAnimation();
       const node = nodesById.get(nodeId);
       const nodeDiv = nodeElements.get(nodeId);
       if (node && nodeDiv) {
@@ -1641,6 +1720,7 @@
       const node = element && nodesById.get(element.id);
       const point = eventPoint(event);
       if (!node || !point) return;
+      finishTidyAnimation();
       if (event.touches && event.cancelable) event.preventDefault();
       suppressClickUntil = 0;
       const pointer = event.pointerId !== undefined;
@@ -1966,7 +2046,8 @@
         const parent = child && nodesById.get(child.parentId);
         const line = connectionElements.get(childId);
         if (!line || !parent) return;
-        const points = getConnectionPoints(parent, child);
+        const positions = tidyAnimation && tidyAnimation.positions;
+        const points = getConnectionPoints(positions?.get(parent.id) || parent, positions?.get(child.id) || child);
         Object.entries(points).forEach(([name, value]) => {
           const coordinate = String(value);
           if (line.getAttribute(name) !== coordinate) line.setAttribute(name, coordinate);
@@ -2260,6 +2341,7 @@
     // Keyboard/rotation changes should reveal the editor without rebuilding it
     // and losing focus or the text selection on iPad.
     window.addEventListener('resize', () => {
+      finishTidyAnimation();
       cancelDrag();
       stopPan();
       revealFocusedNode();
@@ -2411,169 +2493,168 @@
       window.open(url.toString(), '_blank');
     }
 
-    function autoLayout() {
-      pushToUndo();
+    // Arrange each tree independently. Existing sides and visual order are the
+    // user's structure; only spacing changes. Walk iteratively for deep maps.
+    function getTidyLayout(snapshot) {
+      const layout = new Map();
+      snapshot.byId.forEach(node => layout.set(node.id, {
+        id: node.id, parentId: node.parentId, x: node.x, y: node.y,
+        width: node.width, height: node.height, children: [], side: null,
+        treeHeight: node.height
+      }));
+      const visualOrder = (a, b) => a.y + a.height / 2 - b.y - b.height / 2 || a.x - b.x;
+      const roots = Array.from(layout.values())
+        .filter(node => node.id !== centralNodeId && !layout.has(node.parentId))
+        .sort(visualOrder);
+      const centre = layout.get(centralNodeId);
+      if (centre) roots.unshift(centre);
+      // Remaining entries allow malformed imported cycles to terminate safely.
+      const candidates = roots.concat(Array.from(layout.values()));
+      const visited = new Set();
+      const occupied = [];
 
-      const containerRect = container.getBoundingClientRect();
-      const centerX = containerRect.width / 2 - panX;
-      const centerY = containerRect.height / 2 - panY;
-      const snapshot = getPlacementSnapshot();
-
-      // Constants for layout
-      const H_GAP = BRANCH_GAP;
-      const V_GAP = NODE_GAP;
-
-      // 1. Build Tree Structure
-      // We need a temporary tree structure to calculate dimensions
-      const rootNodeData = nodesData.find(n => n.id === centralNodeId);
-      if (!rootNodeData) return;
-
-      function buildTree(nodeId) {
-        const node = snapshot.byId.get(nodeId);
-        if (!node) return null;
-
-        const layoutNode = {
-          id: node.id,
-          text: node.text,
-          width: node.width,
-          height: node.height,
-          x: 0,
-          y: 0,
-          children: [],
-          side: null, // 'left' or 'right'
-          treeHeight: 0
-        };
-
-        // Find children
-        const childIds = snapshot.children.get(nodeId) || [];
-        layoutNode.children = childIds.map(buildTree).filter(n => n !== null);
-
-        return layoutNode;
+      function placeStack(parent, children, side, gap) {
+        const height = children.reduce((sum, child) => sum + child.treeHeight, 0) +
+          Math.max(0, children.length - 1) * NODE_GAP;
+        let y = parent.y + (parent.height - height) / 2;
+        children.forEach(child => {
+          child.x = side === 'left' ? parent.x - gap - child.width : parent.x + parent.width + gap;
+          child.y = y + (child.treeHeight - child.height) / 2;
+          y += child.treeHeight + NODE_GAP;
+        });
       }
 
-      const root = buildTree(centralNodeId);
-      if (!root) return;
-
-      // Position root in center
-      root.x = centerX - (root.width / 2);
-      root.y = centerY - (root.height / 2);
-
-      // 2. Assign Sides (Balance Left/Right for root children)
-      // We alternate sides for immediate children of the root
-      const rightChildren = [];
-      const leftChildren = [];
-
-      root.children.forEach((child, index) => {
-        if (index % 2 === 0) {
-          child.side = "right";
-          rightChildren.push(child);
-        } else {
-          child.side = "left";
-          leftChildren.push(child);
+      candidates.forEach(root => {
+        if (visited.has(root.id)) return;
+        visited.add(root.id);
+        const order = [root];
+        for (let i = 0; i < order.length; i++) {
+          const parent = order[i];
+          const children = (snapshot.children.get(parent.id) || [])
+            .map(id => layout.get(id)).filter(Boolean).sort(visualOrder);
+          children.forEach(child => {
+            if (visited.has(child.id)) return;
+            visited.add(child.id);
+            child.side = parent === root
+              ? (child.x + child.width / 2 < root.x + root.width / 2 ? 'left' : 'right')
+              : parent.side;
+            parent.children.push(child);
+            order.push(child);
+          });
         }
-      });
-
-      // 3. Calculate Tree Heights (Pass 1: Bottom-Up)
-      // This ensures we allocate enough vertical space for sub-trees
-      function calculateTreeHeight(node) {
-        if (!node.children || node.children.length === 0) {
-          node.treeHeight = node.height;
-          return node.height;
+        for (let i = order.length - 1; i >= 0; i--) {
+          const node = order[i];
+          const height = node.children.reduce((sum, child) => sum + child.treeHeight, 0) +
+            Math.max(0, node.children.length - 1) * NODE_GAP;
+          node.treeHeight = Math.max(node.height, height);
         }
-
-        let h = 0;
-        node.children.forEach(child => {
-          h += calculateTreeHeight(child);
+        order.forEach(parent => {
+          if (parent === root) {
+            placeStack(parent, parent.children.filter(child => child.side === 'left'), 'left', 100);
+            placeStack(parent, parent.children.filter(child => child.side === 'right'), 'right', 100);
+          } else {
+            placeStack(parent, parent.children, parent.side, BRANCH_GAP);
+          }
         });
 
-        // Add gaps between children
-        h += (node.children.length - 1) * V_GAP;
+        const bounds = { x: root.x, y: root.y, right: root.x + root.width, bottom: root.y + root.height };
+        order.forEach(node => {
+          bounds.x = Math.min(bounds.x, node.x);
+          bounds.y = Math.min(bounds.y, node.y);
+          bounds.right = Math.max(bounds.right, node.x + node.width);
+          bounds.bottom = Math.max(bounds.bottom, node.y + node.height);
+        });
+        // Reserve the entire group, including its connectors. Keep a detached
+        // group's anchor unless its new bounds collide with a previously placed group.
+        const y = findFreeNodeY(bounds.x, bounds.y, bounds.right - bounds.x,
+          bounds.bottom - bounds.y, occupied, false);
+        const dy = y - bounds.y;
+        if (dy) order.forEach(node => { node.y += dy; });
+        occupied.push({ ...bounds, y, bottom: bounds.bottom + dy });
+      });
+      return layout;
+    }
 
-        // The node's treeHeight is the max of its own height and its children's total height
-        // (Usually children stack is taller)
-        node.treeHeight = Math.max(node.height, h);
-        return node.treeHeight;
-      }
+    function finishTidyAnimation() {
+      const animation = tidyAnimation;
+      if (!animation) return;
+      tidyAnimation = null;
+      if (animation.frame !== null) cancelAnimationFrame(animation.frame);
+      animation.moves.forEach(move => {
+        move.element.style.transform = '';
+        move.element.classList.remove('tidying');
+      });
+      animation.edges.forEach(id => dirtyConnections.add(id));
+      flushConnectionUpdates();
+    }
 
-      // Calculate heights for all root children
-      root.children.forEach(calculateTreeHeight);
+    function paintTidyAnimation(now) {
+      const animation = tidyAnimation;
+      if (!animation) return;
+      animation.frame = null;
+      const progress = Math.min(1, Math.max(0, (now - animation.start) / 220));
+      if (progress === 1) { finishTidyAnimation(); return; }
+      const remaining = Math.pow(1 - progress, 3);
+      animation.moves.forEach(move => {
+        const dx = move.dx * remaining;
+        const dy = move.dy * remaining;
+        move.element.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+        const position = animation.positions.get(move.id);
+        position.x = move.x + dx;
+        position.y = move.y + dy;
+      });
+      animation.edges.forEach(id => dirtyConnections.add(id));
+      // Nodes and connectors share the same frame and easing, with no DOM measurements.
+      flushConnectionUpdates();
+      animation.frame = requestAnimationFrame(paintTidyAnimation);
+    }
 
+    function animateTidyLayout(before, changed) {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      const moves = changed.filter(node => {
+        const old = before.get(node.id);
+        return node.x !== old.x || node.y !== old.y;
+      }).map(node => ({
+        id: node.id, x: node.x, y: node.y,
+        dx: before.get(node.id).x - node.x, dy: before.get(node.id).y - node.y,
+        element: nodeElements.get(node.id)
+      }));
+      // A large map gets the finished layout immediately instead of animating
+      // hundreds of layers and connectors on an older iPad.
+      if (!moves.length || moves.length > 250) return;
+      const edges = new Set();
+      const positions = new Map();
+      moves.forEach(move => {
+        move.element.classList.add('tidying');
+        positions.set(move.id, { id: move.id, x: move.x, y: move.y });
+        incidentConnections(move.id).forEach(id => edges.add(id));
+      });
+      tidyAnimation = { moves, edges, positions, start: performance.now(), frame: null };
+      paintTidyAnimation(tidyAnimation.start);
+    }
 
-      // 4. Layout Children (Pass 2: Top-Down)
-      function layoutChildren(parent) {
-        // Separate children by side (only relevant for root, others inherit)
-        // For non-root nodes, all children should be on the same side as the parent
-        let pRightChildren, pLeftChildren;
-
-        if (parent.id === centralNodeId) {
-          pRightChildren = parent.children.filter(c => c.side === 'right');
-          pLeftChildren = parent.children.filter(c => c.side === 'left');
-        } else {
-          // All children follow the parent's side
-          if (parent.side === 'right') {
-            pRightChildren = parent.children;
-            pLeftChildren = [];
-          } else {
-            pRightChildren = [];
-            pLeftChildren = parent.children;
-          }
-        }
-
-        // Helper to place a stack of children
-        const placeStack = (children, direction) => {
-          if (children.length === 0) return;
-
-          const totalHeight = children.reduce((sum, c) => sum + c.treeHeight, 0) + (children.length - 1) * V_GAP;
-
-          // Start Y: Center the stack relative to the parent
-          let currentY = parent.y + (parent.height / 2) - (totalHeight / 2);
-
-          children.forEach(child => {
-            // Inherit side
-            child.side = direction;
-
-            // Calculate child Y to center it in its allocated slot
-            const childSlotHeight = child.treeHeight;
-            const childY = currentY + (childSlotHeight - child.height) / 2;
-
-            child.y = childY;
-
-            if (direction === 'right') {
-              child.x = parent.x + parent.width + H_GAP;
-            } else {
-              child.x = parent.x - child.width - H_GAP;
-            }
-
-            // Recursively layout this child's children
-            layoutChildren(child);
-
-            currentY += childSlotHeight + V_GAP;
-          });
-        };
-
-        placeStack(pRightChildren, 'right');
-        placeStack(pLeftChildren, 'left');
-      }
-
-      layoutChildren(root);
-
-      // 5. Update nodesData and Render
-      function updateNodesData(layoutNode) {
-        const dataNode = nodesData.find(n => n.id === layoutNode.id);
-        if (dataNode) {
-          dataNode.x = layoutNode.x;
-          dataNode.y = layoutNode.y;
-          if (layoutNode.side === 'left') {
-            dataNode.placementRight = layoutNode.x + layoutNode.width;
-          } else {
-            delete dataNode.placementRight;
-          }
-        }
-        layoutNode.children.forEach(updateNodesData);
-      }
-
-      updateNodesData(root);
+    function autoLayout() {
+      cancelDrag();
+      stopPan();
+      finishTidyAnimation();
+      const snapshot = getPlacementSnapshot();
+      const layout = getTidyLayout(snapshot);
+      const changed = nodesData.filter(node => {
+        const target = layout.get(node.id);
+        const anchor = target.side === 'left' ? target.x + target.width : undefined;
+        return node.x !== target.x || node.y !== target.y || node.placementRight !== anchor;
+      });
+      if (!changed.length) return;
+      pushToUndo();
+      changed.forEach(node => {
+        const target = layout.get(node.id);
+        node.x = target.x;
+        node.y = target.y;
+        if (target.side === 'left') node.placementRight = target.x + target.width;
+        else delete node.placementRight;
+      });
       renderMindMap();
+      animateTidyLayout(snapshot.byId, changed);
     }
 
     // Helper: Capture the full mind map as an image data URL

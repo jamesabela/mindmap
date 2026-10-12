@@ -45,14 +45,17 @@ try {
   await command('Runtime.enable');
   await command('Network.enable');
   await command('Network.setBypassServiceWorker', { bypass: true });
+  await command('Network.setCacheDisabled', { cacheDisabled: true });
   await command('Emulation.setTouchEmulationEnabled', { enabled: false });
   await command('Emulation.setDeviceMetricsOverride', { width: 1180, height: 820, deviceScaleFactor: 1, mobile: false });
-  await command('Page.navigate', { url: 'http://127.0.0.1:8000/mindmapplain.html' });
+  const query = '?placement-test=' + Date.now();
+  await command('Page.navigate', { url: 'http://127.0.0.1:8000/mindmapplain.html' + query });
   for (let attempt = 0; attempt < 100; attempt++) {
-    if (await evaluate("typeof isInitialized !== 'undefined' && isInitialized")) break;
+    if (await evaluate("typeof isInitialized !== 'undefined' && isInitialized && location.search === " + JSON.stringify(query))) break;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.equal(await evaluate('isInitialized'), true, 'Page initialized');
+  await evaluate('document.fonts.ready');
   await evaluate(`
     window.check = (condition, label) => { if (!condition) throw new Error(label); };
     window.fixtureNode = (id, parentId, x, y, text = id) => ({ id, parentId, x, y, text, color: '#FFFFFF' });
@@ -173,21 +176,209 @@ try {
       stopDrag(); check(!('placementRight' in left), 'Manual position no longer anchored');
       const x = left.x; renderMindMap(); check(left.x === x, 'Manual position survives render');
     `],
-    ['Tidy layout respects measured nodes, anchors and current pan', `
+    ['Tidy layout respects measured nodes and keeps the root and pan anchored', `
       resetMap(); addNode(centralNodeId); addNode(centralNodeId);
       const left = lastNode(); addNode(left.id);
       nodesData[0].text = 'A wide central topic'; renderMindMap();
+      const before = {...nodesData[0]};
       panX = 120; panY = -75; updateCanvasTransform(); autoLayout();
       nodesData.forEach(node => assertClear(node.id));
       const root = rectFor(centralNodeId);
-      check(Math.abs(root.x + root.width / 2 + panX - innerWidth / 2) < 1, 'Tidy centres in visible map');
+      check(root.x === before.x && root.y === before.y, 'Tidy keeps the central topic anchored');
+      check(panX === 120 && panY === -75, 'Tidy preserves the current view');
       renderMindMap(); nodesData.forEach(node => assertClear(node.id));
+    `],
+    ['Tidy preserves branch sides and visual order with differently sized subtrees', `
+      resetMap([
+        fixtureNode('bottom-left', centralNodeId, 200, 600),
+        fixtureNode('bottom-right', centralNodeId, 850, 650),
+        fixtureNode('top-left', centralNodeId, 100, 100),
+        fixtureNode('top-right', centralNodeId, 750, 50),
+        fixtureNode('low-detail', 'top-left', -300, 250),
+        fixtureNode('high-detail', 'top-left', -350, 0),
+        fixtureNode('deep-detail', 'high-detail', -600, 0)
+      ]);
+      const tall = nodeElements.get('high-detail'); tall.style.height = '180px'; tall.style.width = '240px';
+      const parents = nodesData.map(n => [n.id, n.parentId]);
+      autoLayout();
+      const snapshot = getPlacementSnapshot();
+      for (const id of ['bottom-left', 'top-left', 'high-detail', 'low-detail', 'deep-detail'])
+        check(snapshot.sideFor(id) === 'left', 'Left branch stays left: ' + id);
+      for (const id of ['top-right', 'bottom-right']) check(snapshot.sideFor(id) === 'right', 'Right branch stays right');
+      check(nodesById.get('top-left').y < nodesById.get('bottom-left').y, 'Left visual order preserved');
+      check(nodesById.get('top-right').y < nodesById.get('bottom-right').y, 'Right visual order preserved');
+      check(nodesById.get('high-detail').y < nodesById.get('low-detail').y, 'Nested visual order preserved');
+      check(JSON.stringify(nodesData.map(n => [n.id, n.parentId])) === JSON.stringify(parents), 'Connections unchanged');
+      nodesData.forEach(node => assertClear(node.id));
+      const branch = snapshot.boundsFor('top-left');
+      check(branch.bottom + NODE_GAP <= snapshot.byId.get('bottom-left').y, 'Large subtree has its own vertical space');
+    `],
+    ['Tidy separates disconnected trees, preserves distant groups, and is one undo step', `
+      resetMap([
+        fixtureNode('branch', centralNodeId, 850, 50),
+        fixtureNode('detached', null, 790, 350),
+        fixtureNode('detached-child', 'detached', 1000, 600),
+        fixtureNode('distant', null, -1000, -500)
+      ]);
+      const original = JSON.stringify(nodesData);
+      const elements = new Map(nodeElements), lines = new Map(connectionElements);
+      autoLayout();
+      const tidy = JSON.stringify(nodesData);
+      check(nodesById.get('detached').parentId === null, 'Disconnected root stays disconnected');
+      check(nodesById.get('detached-child').parentId === 'detached', 'Disconnected tree keeps its connections');
+      check(nodesById.get('distant').x === -1000 && nodesById.get('distant').y === -500, 'Distant island stays put');
+      nodesData.forEach(node => assertClear(node.id));
+      check(undoStack.length === 1, 'One Tidy is one undo step');
+      autoLayout();
+      check(JSON.stringify(nodesData) === tidy && undoStack.length === 1, 'Repeated Tidy is a no-op');
+      undo(); check(JSON.stringify(nodesData) === original, 'Undo restores every group exactly');
+      redo(); check(JSON.stringify(nodesData) === tidy, 'Redo restores tidy positions');
+      redoStack.push(JSON.parse(original)); autoLayout();
+      check(redoStack.length === 1 && undoStack.length === 1, 'No-op Tidy preserves undo and redo history');
+      elements.forEach((el, id) => check(nodeElements.get(id) === el, 'Tidy retains card ' + id));
+      lines.forEach((el, id) => check(connectionElements.get(id) === el, 'Tidy retains connector ' + id));
+    `],
+    ['Tidy handles a deep tree and malformed imported cycles without recursion', `
+      const byId = new Map(), children = new Map();
+      for (let i = 0; i < 12000; i++) {
+        const id = i ? 'deep-' + i : centralNodeId;
+        const parentId = i > 1 ? 'deep-' + (i - 1) : i ? centralNodeId : null;
+        byId.set(id, {id, parentId, x: i * 200, y: 0, width: 120, height: 50});
+        if (!children.has(parentId)) children.set(parentId, []);
+        children.get(parentId).push(id);
+      }
+      const layout = getTidyLayout({byId, children});
+      check(layout.size === 12000 && Number.isFinite(layout.get('deep-11999').x), 'Deep map completes without stack overflow');
+      resetMap([fixtureNode('cycle-a', 'cycle-b', 100, 100), fixtureNode('cycle-b', 'cycle-a', 200, 200),
+        fixtureNode('orphan', 'missing', 800, 100)]);
+      const parents = nodesData.map(n => n.parentId); autoLayout();
+      check(nodesData.every(n => Number.isFinite(n.x) && Number.isFinite(n.y)), 'Imported cycles terminate with finite positions');
+      check(JSON.stringify(nodesData.map(n => n.parentId)) === JSON.stringify(parents), 'Tidy does not change imported connections');
     `]
   ];
   for (const [name, code] of cases) {
     await evaluate(`(() => { ${code} })()`);
     console.log(`PASS ${name}`);
   }
+
+  await evaluate(`
+    window.twoFrames = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    window.tidyFixture = () => {
+      resetMap([
+        fixtureNode('tidy-left', centralNodeId, 200, 70, 'Left branch'),
+        fixtureNode('tidy-right', centralNodeId, 1000, 650, 'Right branch'),
+        fixtureNode('tidy-child', 'tidy-right', 1200, 800, 'Detail')
+      ]);
+      interactionMode = 'move'; renderMindMap();
+    };
+    tidyFixture();
+  `);
+  await evaluate('twoFrames()');
+  const animationResult = await evaluate(`(async () => {
+    const original = JSON.stringify(nodesData);
+    const elements = new Map(nodeElements), lines = new Map(connectionElements);
+    urlStorageEnabled = true;
+    autoLayout();
+    check(!!tidyAnimation, 'Small map animates');
+    const finalData = JSON.stringify(nodesData);
+    check(decodeURIComponent(atob(location.hash.slice(1))) === finalData, 'URL stores final coordinates immediately');
+    const originalRect = Element.prototype.getBoundingClientRect;
+    const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+    let reads = 0;
+    Element.prototype.getBoundingClientRect = function() { reads++; return originalRect.call(this); };
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {...width, get() { reads++; return width.get.call(this); }});
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {...height, get() { reads++; return height.get.call(this); }});
+    try {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      check(!!tidyAnimation, 'Animation has an intermediate frame');
+      for (const move of tidyAnimation.moves) {
+        const visual = tidyAnimation.positions.get(move.id);
+        const matrix = new DOMMatrixReadOnly(getComputedStyle(move.element).transform);
+        check(Math.abs(move.x + matrix.m41 - visual.x) < 0.01 && Math.abs(move.y + matrix.m42 - visual.y) < 0.01,
+          'Card and connector use the same visual position');
+        check(getComputedStyle(move.element).filter === 'none', 'Text stays sharp during Tidy');
+      }
+      for (const id of tidyAnimation.edges) {
+        const child = nodesById.get(id), parent = nodesById.get(child.parentId);
+        const points = getConnectionPoints(tidyAnimation.positions.get(parent.id) || parent, tidyAnimation.positions.get(id) || child);
+        const line = connectionElements.get(id);
+        for (const [key, value] of Object.entries(points)) check(Math.abs(Number(line.getAttribute(key)) - value) < 0.01, 'Connector follows animation');
+      }
+      check(JSON.stringify(nodesData) === finalData, 'Animation does not mutate saved coordinates');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      check(!tidyAnimation && !document.querySelector('.tidying'), 'Animation completes and clears temporary layers');
+      check(reads === 0, 'No layout measurements during animation');
+    } finally {
+      Element.prototype.getBoundingClientRect = originalRect;
+      Object.defineProperty(HTMLElement.prototype, 'offsetWidth', width);
+      Object.defineProperty(HTMLElement.prototype, 'offsetHeight', height);
+      urlStorageEnabled = false;
+    }
+    elements.forEach((el, id) => check(nodeElements.get(id) === el, 'Animated card retained'));
+    lines.forEach((el, id) => check(connectionElements.get(id) === el, 'Animated connector retained'));
+    undo(); check(JSON.stringify(nodesData) === original, 'Animated action undoes exactly');
+    redo(); check(JSON.stringify(nodesData) === finalData, 'Animated action redoes exactly');
+    tidyFixture(); const before = JSON.stringify(nodesData); autoLayout(); undo();
+    check(!tidyAnimation && !document.querySelector('.tidying'), 'Undo interrupts animation immediately');
+    check(JSON.stringify(nodesData) === before, 'Undo during animation restores the original arrangement');
+    tidyFixture(); autoLayout();
+    const moving = nodesById.get('tidy-right');
+    startDrag({clientX:moving.x + 20, clientY:moving.y + 20}, moving.id);
+    check(!tidyAnimation && [...nodeElements.values()].every(el => !el.style.transform), 'Drag interrupts animation cleanly');
+    cancelDrag();
+    return {geometryReadsDuringAnimation: reads};
+  })()`);
+  console.log('PASS Tidy animation, connected lines, URL persistence, Undo and drag interruption:', JSON.stringify(animationResult));
+
+  await command('Emulation.setEmulatedMedia', {features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+  await evaluate(`tidyFixture(); autoLayout(); check(!tidyAnimation && !document.querySelector('.tidying'), 'Reduced motion applies Tidy immediately');`);
+  await command('Emulation.setEmulatedMedia', {features:[]});
+  console.log('PASS Tidy respects reduced motion');
+
+  const largeTidy = await evaluate(`(() => {
+    const extra = [];
+    for (let i = 0; i < 1000; i++) extra.push(fixtureNode('tidy-large-' + i, centralNodeId, i % 2 ? 100 : 900, (i % 17) * 60));
+    resetMap(extra); interactionMode = 'move'; renderMindMap();
+    const nativeFind = nodesData.find;
+    let comparisons = 0;
+    nodesData.find = function(predicate) { return nativeFind.call(this, (node, i, list) => { comparisons++; return predicate(node, i, list); }); };
+    const start = performance.now();
+    try { autoLayout(); } finally { delete nodesData.find; }
+    const elapsed = performance.now() - start;
+    check(comparisons < nodesData.length * 3, 'Tidy does not repeatedly search the full node list');
+    check(!tidyAnimation, 'Large maps skip the animation');
+    check(undoStack.length === 1, 'Large Tidy is one undo step');
+    const left = nodesData.filter(n => n.parentId === centralNodeId && n.x < nodesData[0].x).sort((a,b) => a.y-b.y);
+    const right = nodesData.filter(n => n.parentId === centralNodeId && n.x > nodesData[0].x).sort((a,b) => a.y-b.y);
+    for (const stack of [left,right]) for (let i=1;i<stack.length;i++)
+      check(stack[i].y >= stack[i-1].y + nodeSizes.get(stack[i-1].id).height + NODE_GAP, 'Large-map branches do not overlap');
+    return {nodes:nodesData.length, nodeSearchComparisons:comparisons, elapsedMs:Math.round(elapsed)};
+  })()`);
+  console.log('PASS large-map Tidy:', JSON.stringify(largeTidy));
+
+  for (const width of [768,390,320]) {
+    await command('Emulation.setDeviceMetricsOverride', {width,height:1024,deviceScaleFactor:1,mobile:true});
+    await command('Emulation.setTouchEmulationEnabled', {enabled:true,maxTouchPoints:5});
+    await evaluate('tidyFixture(); twoFrames()');
+    const button = await evaluate(`(() => {
+      const button = document.getElementById('auto-layout-btn').getBoundingClientRect();
+      const dock = document.getElementById('toolbar-dock').getBoundingClientRect();
+      const rows = new Set([...document.querySelectorAll('#toolbar-dock .toolbar-panel')]
+        .map(el => el.getBoundingClientRect()).filter(r => r.width).map(r => Math.round(r.top)));
+      check(rows.size === 2, 'Toolbar stays in two rows');
+      check(button.width >= 44 && button.height >= 44, 'Tidy has a visible touch target');
+      check(button.left >= dock.left && button.right <= dock.right, 'Tidy fits inside toolbar');
+      return {x:button.left+button.width/2,y:button.top+button.height/2};
+    })()`);
+    await command('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[button]});
+    await command('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
+    await evaluate(`new Promise(resolve=>setTimeout(resolve,350))`);
+    await evaluate(`check(undoStack.length === 1, 'Touch Tidy arranged the map'); nodesData.forEach(node=>assertClear(node.id));`);
+    console.log('PASS touch Tidy and two toolbar rows at ' + width + 'px');
+  }
+  await command('Emulation.setDeviceMetricsOverride', {width:1180,height:820,deviceScaleFactor:1,mobile:false});
+  await command('Emulation.setTouchEmulationEnabled', {enabled:false});
 
   await evaluate(`
     window.twoFrames = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
