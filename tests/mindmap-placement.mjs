@@ -324,6 +324,9 @@ try {
   await evaluate(`new Promise(resolve => setTimeout(resolve, 350))`);
   await evaluate(`check(nodesData.length === 2 && lastNode().parentId === centralNodeId, 'Touch button adds child'); assertVisible(lastNode().id);`);
   console.log('PASS iPad portrait touch adds a visible connected node');
+  const tabletToolbar = await evaluate(`(() => {const r = document.getElementById('toolbar-dock').getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,scale:1};})()`);
+  const tabletShot = await command('Page.captureScreenshot', {format:'png',clip:tabletToolbar});
+  await writeFile('/tmp/mindmap-toolbar-ipad.png', Buffer.from(tabletShot.data, 'base64'));
 
   const touchDrag = await evaluate(`(() => {
     const node = lastNode(); const rect = document.getElementById(node.id).getBoundingClientRect();
@@ -381,6 +384,9 @@ try {
   `);
   const screenshot = await command('Page.captureScreenshot', { format: 'png' });
   await writeFile('/tmp/mindmap-placement.png', Buffer.from(screenshot.data, 'base64'));
+  const desktopToolbar = await evaluate(`(() => {const r = document.getElementById('toolbar-dock').getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,scale:1};})()`);
+  const toolbarShot = await command('Page.captureScreenshot', {format:'png',clip:desktopToolbar});
+  await writeFile('/tmp/mindmap-toolbar.png', Buffer.from(toolbarShot.data, 'base64'));
 
   // Verify the mouse/touch fallback for browsers without Pointer Events.
   const fallbackScript = await command('Page.addScriptToEvaluateOnNewDocument', {

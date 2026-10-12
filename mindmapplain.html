@@ -128,7 +128,7 @@
       min-height: 80px;
     }
 
-    svg {
+    #svg-connections {
       position: absolute;
       top: 0;
       left: 0;
@@ -140,7 +140,7 @@
     }
 
     /* SVG Line Styling */
-    line {
+    #svg-connections line {
       stroke: rgba(0, 0, 0, 0.4);
       stroke-width: 2px;
       transition: stroke 0.3s;
@@ -158,8 +158,8 @@
       gap: 4px;
       z-index: 100;
       align-items: center;
-      width: auto;
-      max-width: 98%;
+      width: max-content;
+      max-width: calc(100vw - 32px);
       flex-wrap: wrap;
       /* Allow wrapping for responsiveness */
       justify-content: center;
@@ -202,6 +202,39 @@
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      justify-content: center;
+      min-height: 34px;
+      text-decoration: none;
+      box-sizing: border-box;
+      white-space: nowrap;
+    }
+
+    .icon-btn {
+      min-width: 34px;
+    }
+
+    .action-icon {
+      display: block;
+      flex: 0 0 auto;
+      width: 20px;
+      height: 20px;
+      pointer-events: none;
+    }
+
+    #mode-toggle-btn.move-mode .mode-edit-icon,
+    #mode-toggle-btn.edit-mode .mode-move-icon {
+      display: none;
+    }
+
+    .node-link-icon .action-icon {
+      width: 18px;
+      height: 18px;
+    }
+
+    .icon-btn:focus-visible,
+    .main-button:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
     }
 
     .icon-btn:hover,
@@ -800,20 +833,23 @@
         data-placeholder="Central topic"></div>
     </div>
     <div id="toolbar-dock">
-      <!-- Main Actions -->
-      <div class="toolbar-panel" id="main-actions"><button id="mode-toggle-btn" class="main-button move-mode"
-          title="Toggle Move/Edit Mode">🔄 Move</button>
-        <div class="divider"></div><button id="add-node-btn" class="main-button primary-btn"
-          title="Add Sibling (Enter)">+Node</button><button id="add-child-btn" class="main-button primary-btn"
-          title="Add Child (Tab)">+Child</button><button id="delete-node-btn" class="main-button delete-button"
-          title="Delete Selected">Del</button><button id="split-node-btn" class="icon-btn hide-mobile"
-          title="Split into new Mindmap">✂️</button>
-        <div class="divider"></div><button id="undo-btn" class="icon-btn hide-mobile" title="Undo">↩</button><button
-          id="redo-btn" class="icon-btn hide-mobile" title="Redo">↪</button><button id="add-link-btn"
-          class="icon-btn hide-mobile" title="Add/Edit Link">🔗</button><button id="copy-text-btn"
-          class="icon-btn hide-tablet" title="Copy Text">📋</button>
-        <div class="divider"></div><button id="auto-layout-btn" class="icon-btn hide-mobile"
-          title="Auto-layout nodes">🔄</button>
+      <!-- Main Actions: vector icons describe commands; emoji buttons below insert content. -->
+      <div class="toolbar-panel" id="main-actions">
+        <button id="mode-toggle-btn" class="main-button move-mode" title="Switch to Edit mode" aria-label="Move mode. Switch to Edit mode">
+          <svg class="action-icon mode-move-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></svg><svg class="action-icon mode-edit-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 4 5 5M4 20l5-1L20 8a2 2 0 0 0-5-5L4 14z"/></svg><span class="mode-label">Move</span>
+        </button>
+        <div class="divider"></div>
+        <button id="add-node-btn" class="main-button primary-btn" title="Add sibling; select the centre for a disconnected node" aria-label="Add sibling; select the centre for a disconnected node"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="12" height="7" rx="2"/><rect x="3" y="15" width="12" height="6" rx="2"/><path d="M20 12v6M17 15h6"/></svg><span>Node</span></button>
+        <button id="add-child-btn" class="main-button primary-btn" title="Add child (Tab)" aria-label="Add child (Tab)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="3" width="9" height="6" rx="2"/><path d="M6 9v8h5M17 13v8M13 17h8"/></svg><span>Child</span></button>
+        <button id="delete-node-btn" class="main-button delete-button" title="Delete selected branch" aria-label="Delete selected branch"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg><span>Delete</span></button>
+        <button id="split-node-btn" class="icon-btn hide-mobile" title="Open selected branch as a new mindmap" aria-label="Open selected branch as a new mindmap"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="12" width="7" height="7" rx="1.5"/><path d="M6.5 12V5H11M14 3h7v7M21 3l-8 8M14 15h7v6h-7"/></svg></button>
+        <div class="divider"></div>
+        <button id="undo-btn" class="icon-btn hide-mobile" title="Undo" aria-label="Undo"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m9 4-5 5 5 5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+        <button id="redo-btn" class="icon-btn hide-mobile" title="Redo" aria-label="Redo"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 4 5 5-5 5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+        <button id="add-link-btn" class="icon-btn hide-mobile" title="Add or edit a link or image" aria-label="Add or edit a link or image"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m10 13 4-4M8 15l-1 1a3.5 3.5 0 0 1-5-5l4-4a3.5 3.5 0 0 1 5 0M16 9l1-1a3.5 3.5 0 0 1 5 5l-4 4a3.5 3.5 0 0 1-5 0"/></svg></button>
+        <button id="copy-text-btn" class="icon-btn hide-tablet" title="Copy mindmap as text" aria-label="Copy mindmap as text"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3M12 12h5M12 16h5"/></svg></button>
+        <div class="divider"></div>
+        <button id="auto-layout-btn" class="icon-btn hide-mobile" title="Tidy mindmap layout" aria-label="Tidy mindmap layout"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="8" y="9" width="8" height="6" rx="1.5"/><rect x="2" y="2" width="5" height="4" rx="1"/><rect x="17" y="2" width="5" height="4" rx="1"/><rect x="2" y="18" width="5" height="4" rx="1"/><rect x="17" y="18" width="5" height="4" rx="1"/><path d="m8 10-4-4m12 4 4-4m-12 8-4 4m12-4 4 4"/></svg></button>
       </div>
       <!-- Styling & Emojis -->
       <div class="toolbar-panel" id="style-panel">
@@ -836,14 +872,15 @@
       </div>
       <!-- File Operations -->
       <div class="toolbar-panel" id="file-ops">
-        <div class="divider"></div><a href="mindmapplain.html" target="_blank" style="text-decoration: none;"><button
-            class="main-button hide-tablet" title="New Mindmap">New</button></a><button id="upload-json-btn"
-          class="main-button hide-tablet" onclick="document.getElementById('upload-json').click()"
-          title="Open JSON">📂</button><input type="file" id="upload-json" /><button id="download-json-btn"
-          class="main-button" title="Save JSON">💾</button><button id="export-png-btn" class="main-button hide-tablet"
-          title="Export PNG">🖼️</button><button id="export-svg-btn" class="main-button hide-tablet"
-          title="Export SVG">✏️</button><button id="export-pptx-btn" class="main-button hide-tablet"
-          title="Export PPTX">📊</button><button id="help-btn" class="main-button" title="Help">❓</button>
+        <div class="divider"></div>
+        <a href="mindmapplain.html" target="_blank" rel="noopener" class="main-button hide-tablet" title="New mindmap" aria-label="New mindmap"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 2H5v20h14V7zM14 2v5h5M8 14h8M12 10v8"/></svg><span>New</span></a>
+        <button id="upload-json-btn" class="icon-btn hide-tablet" title="Open an editable mindmap (JSON)" aria-label="Open an editable mindmap (JSON)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7V5a2 2 0 0 1 2-2h4l3 3h7a2 2 0 0 1 2 2v2M3 7v13h16l3-10H7l-4 10"/></svg></button>
+        <input type="file" id="upload-json" accept=".json,application/json" />
+        <button id="download-json-btn" class="main-button" title="Save an editable mindmap (JSON)" aria-label="Save an editable mindmap (JSON)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg><span>Save</span></button>
+        <button id="export-png-btn" class="main-button hide-tablet" title="Export an image (PNG)" aria-label="Export an image (PNG)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 3-3 6 6"/></svg><span>PNG</span></button>
+        <button id="export-svg-btn" class="main-button hide-tablet" title="Export a scalable graphic (SVG)" aria-label="Export a scalable graphic (SVG)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="10" width="4" height="4" rx=".5"/><rect x="18" y="10" width="4" height="4" rx=".5"/><rect x="10" y="2" width="4" height="4" rx=".5"/><path d="M4 10a8 8 0 0 1 6-6m4 0a8 8 0 0 1 6 6M4 14v6m16-6v6M2 20h4m12 0h4"/></svg><span>SVG</span></button>
+        <button id="export-pptx-btn" class="main-button hide-tablet" title="Export PowerPoint slides (PPTX)" aria-label="Export PowerPoint slides (PPTX)"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 3h20M4 3v13h16V3M12 16v5m-4 0 4-5 4 5M8 7h8M8 11h4"/></svg><span>PPTX</span></button>
+        <button id="help-btn" class="icon-btn" title="Help" aria-label="Help"><svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.3 1.7c-1.3.7-1.8 1.3-1.8 2.8M12 17h.01"/></svg></button>
         <div class="attribution hide-tablet" style="margin-left: 8px;"><a
             href="https://creativecommons.org/licenses/by-nc-sa/4.0/?ref=chooser-v1" target="_blank"
             rel="license noopener noreferrer" title="CC BY-NC-SA 4.0"><img style="height:18px!important;"
@@ -933,6 +970,7 @@
     const exportSvgBtn = document.getElementById('export-svg-btn');
     const colorPalette = document.getElementById('color-palette');
     const emojiButtons = document.querySelectorAll('.emoji-btn');
+    const LINK_ICON = '<svg class="action-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m10 13 4-4M8 15l-1 1a3.5 3.5 0 0 1-5-5l4-4a3.5 3.5 0 0 1 5 0M16 9l1-1a3.5 3.5 0 0 1 5 5l-4 4a3.5 3.5 0 0 1-5 0"/></svg>';
 
     const colors = ['#FFFFFF',
       '#FFD700',
@@ -1126,7 +1164,8 @@
 
       if (interactionMode === 'edit') {
         // Edit Mode
-        modeBtn.textContent = '✏️ Edit';
+        modeBtn.querySelector('.mode-label').textContent = 'Edit';
+        modeBtn.setAttribute('aria-label', 'Edit mode. Switch to Move mode');
         modeBtn.className = 'main-button edit-mode';
         modeBtn.title = 'Switch to Move Mode';
         document.body.className = 'edit-mode';
@@ -1137,7 +1176,8 @@
         });
       } else {
         // Move Mode
-        modeBtn.textContent = '🔄 Move';
+        modeBtn.querySelector('.mode-label').textContent = 'Move';
+        modeBtn.setAttribute('aria-label', 'Move mode. Switch to Edit mode');
         modeBtn.className = 'main-button move-mode';
         modeBtn.title = 'Switch to Edit Mode';
         document.body.className = 'move-mode';
@@ -1544,7 +1584,8 @@
           linkIcon.href = node.link;
           linkIcon.target = '_blank';
           linkIcon.className = 'node-link-icon';
-          linkIcon.innerHTML = '🔗';
+          linkIcon.innerHTML = LINK_ICON;
+          linkIcon.setAttribute('aria-label', 'Open link: ' + node.link);
           linkIcon.contentEditable = 'false';
           linkIcon.title = node.link;
 
@@ -2236,6 +2277,7 @@
     undoBtn.addEventListener('click', undo);
     redoBtn.addEventListener('click', redo);
     addLinkBtn.addEventListener('click', addLink);
+    document.getElementById('upload-json-btn').addEventListener('click', () => document.getElementById('upload-json').click());
     addNodeBtn.addEventListener('click', () => addSiblingNode(selectedNodeId));
     addChildBtn.addEventListener('click', () => addNode(selectedNodeId));
     document.getElementById('download-json-btn').addEventListener('click', downloadJSON);
@@ -3123,7 +3165,7 @@
         }
         innerHTML += `<span>${(node.text || '').replace(/</g, '&lt;')}</span>`;
         if (node.link) {
-          innerHTML += `<span style="margin-left:4px">🔗</span>`;
+          innerHTML += `<span style="display:inline-flex;margin-left:4px">${LINK_ICON}</span>`;
         }
 
         const isCentral = node.id === 'central-node';
