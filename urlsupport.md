@@ -1,6 +1,6 @@
 URL Import Support
 
-Importing data via URL parameters, making it easy for AI agents or scripts to generate links.
+Importing data via URL parameters, making it easy for scripts or external tools to generate links.
 
 Supported Parameters:
 
