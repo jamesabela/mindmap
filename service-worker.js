@@ -1,4 +1,5 @@
-const CACHE_NAME = 'mindmap-v6';
+// Bump this version whenever the cached app changes.
+const CACHE_NAME = 'mindmap-v7';
 const ASSETS = [
     './',
     './mindmapplain.html',
@@ -14,13 +15,16 @@ const ASSETS = [
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then((cache) => cache.addAll(ASSETS))
+            .then((cache) => cache.addAll(ASSETS.map(url => new Request(url, { cache: 'reload' }))))
+            // Activate only after the complete offline app has downloaded.
+            .then(() => self.skipWaiting())
     );
 });
 
 self.addEventListener('fetch', (event) => {
     event.respondWith(
-        caches.match(event.request)
+        caches.open(CACHE_NAME)
+            .then(cache => cache.match(event.request))
             .then((response) => {
                 return response || fetch(event.request);
             })
@@ -31,10 +35,10 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((keyList) => {
             return Promise.all(keyList.map((key) => {
-                if (key !== CACHE_NAME) {
+                if (key.startsWith('mindmap-v') && key !== CACHE_NAME) {
                     return caches.delete(key);
                 }
             }));
-        })
+        }).then(() => self.clients.claim())
     );
 });
